@@ -2,7 +2,21 @@
 
 A pygame grand strategy simulation of colonial and nineteenth-century America. The map covers North and South America. You choose a historical start date, then run cities, armies, ships, trade, and diplomacy as the calendar moves through real events.
 
-The window title is **Colonial Simulator**. Start the game from `index.py`.
+The window title is **Colonial Simulator**. The Python game starts from `index.py`. A Rust port of the same simulation lives in this folder and starts with Cargo.
+
+## Rust port
+
+The Rust version keeps the Python sources. It loads the same `images/` map, collision mask, climates, and territory file. Install [Rust](https://rustup.rs/) if `cargo` is not already on your `PATH`. On macOS and Linux, a new terminal needs the Cargo environment:
+
+```bash
+source "$HOME/.cargo/env"
+cd 1756-game
+cargo run --release
+```
+
+The first release build compiles the renderer and takes a few minutes. Later launches are much faster. The game opens fullscreen. Press F11 to leave fullscreen. Escape pauses. Number keys `1` through `4` set the speed (`4` is the fastest). `0` or Space pauses the clock. Drag the map with the right mouse button, or with the left button when the click misses a city. The wheel zooms.
+
+The Rust port runs the calendar, cities, economy, armies, merchants, settlers, wars, treaties, alliances, disasters, pirates, and the historical events for each scenario. It uses the same paintings, flags, building art, and sprite sheets as the Python game. The laws screen, governor portraits, and separate battle viewer are left out. Armies move in straight lines, and they sail when the pixel under them is water.
 
 ## Scenarios
 
@@ -166,7 +180,9 @@ python index.py
 
 ```
 1756-game/
-├── index.py            Main loop, entities, rendering, events, and scenarios
+├── Cargo.toml          Rust package (macroquad, image, rand)
+├── src/                Rust port: menu, map, simulation, and scenarios
+├── index.py            Python main loop, entities, rendering, events, and scenarios
 ├── config.py           Display, economy, movement, and balance constants
 ├── game_state.py       Shared lists: cities, units, wars, treaties, clock
 ├── cities_data.py      Starting settlements and later founded cities
