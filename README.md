@@ -1,95 +1,193 @@
-# 1762 — Grand Strategy Colonial Simulation
+# Colonial Simulator
 
-A pygame-based grand strategy game set in colonial North America (1762-1790s).
+A pygame grand strategy simulation of colonial and nineteenth-century America. The map covers North and South America. You choose a historical start date, then run cities, armies, ships, trade, and diplomacy as the calendar moves through real events.
 
-## Project Structure
+The window title is **Colonial Simulator**. Start the game from `index.py`.
 
+## Scenarios
+
+From the main menu, choose **Play**, then a start date:
+
+| Year | Scenario |
+| --- | --- |
+| 1754 | Seven Years' War |
+| 1790 | Continental Wars |
+| 1809 | War of 1812 |
+| 1835 | Mexican-American War |
+| 1858 | American Civil War |
+
+Scroll the scenario row if a card is off screen.
+
+Colonial powers at the start of a game include Great Britain, France, Spain, Russia, and Denmark, along with the Iroquois, Wabanaki, Comanche, Cree, and Dakota. Later dates bring in the United States, Mexico, Haiti, Texas, the Confederate States, and Canada. Pirates appear in the Caribbean until 1830. The **Codex** on the main menu shows each nation's flags and unit art.
+
+Cities produce lumber, hide, iron, coal, gold, and food. You raise infantry and cavalry, send merchants and settlers, sail ships, build improvements, and pass laws. Wars, treaties, and alliances are tracked on the map. Historical dates (the American Revolution, independence movements, and later wars) fire as the year advances. Unit sprites change around 1800 and again around 1850.
+
+## Requirements
+
+- Python 3.10 or newer
+- [pygame-ce](https://pypi.org/project/pygame-ce/) (imported in code as `pygame`)
+- [Pillow](https://pypi.org/project/Pillow/)
+- [NumPy](https://pypi.org/project/numpy/)
+
+Pillow and NumPy build the territory overlay from `images/regionmap.png` and decode animated GIF frames such as explosions. A desktop session is required. The game opens a fullscreen window.
+
+## Installation
+
+Clone or download this repository and work from the project directory. The virtual environment (`.venv`) keeps pygame-ce, Pillow, and NumPy off the rest of the system. Create it once. After that, activate it whenever you run the game.
+
+`requirements.txt` installs those three packages. pygame-ce and pygame both provide the `pygame` module, so install only one of them. If `pygame-ce` fails to build, install `pygame` in the same activated environment:
+
+```bash
+python -m pip install pygame Pillow numpy
 ```
-1756-game/
-├── index.py        Main game loop, entities, rendering, events (~2380 lines)
-├── collision.py    Collision detection & A* pathfinding
-├── sprites.py      Spritesheet loading for units, ships, merchants
-├── config.py       Game constants, balance values (edit to rebalance)
-├── game_state.py   Shared mutable state (entity lists, diplomacy data)
-├── warfare.py      War scoring constants & system documentation
-├── utilities.py    Regiment/settlement name generators
-└── images/         All game assets (spritesheets, maps, flags)
+
+Leave any environment with `deactivate`.
+
+### macOS
+
+Python 3.10 or newer must be on your `PATH`. The installer from [python.org](https://www.python.org/downloads/) or Homebrew (`brew install python`) both work. Check the version:
+
+```bash
+python3 --version
 ```
 
-## How Collision Works
+Create the environment, activate it, and install the packages:
 
-- `images/collisionmap.jpg` — The collision map (1200x800)
-  - **RED pixels** = Land (units/merchants/settlers walk here)
-  - **BLUE pixels** = Water (ships sail here)
-- Edit this image to change coastlines, add/remove islands, etc.
-- `images/nasatelliteview.jpg` — Visual background only (no gameplay effect)
-
-## Modules
-
-### `config.py` — Balance & Constants
-Edit this file to tweak: starting resources, unit costs, movement speeds,
-disaster chances, treaty lengths, war thresholds, etc.
-
-### `collision.py` — Pathfinding
-- `is_water(x, y)` / `is_land(x, y)` — pixel-level terrain check
-- `find_water_path(sx, sy, tx, ty)` — A* for ships (navigates water)
-- `find_land_path(sx, sy, tx, ty)` — A* for units (navigates land)
-- `deflect_from_water(x, y, dx, dy, spd, trace_side)` — wall-tracing for units at water edges
-- `path_needs_boat(x1, y1, x2, y2)` — checks if route crosses water
-
-### `sprites.py` — Asset Loading
-- `init()` — loads all spritesheets
-- `infantry_anims[faction]` — dict of animation frames per faction
-- `ship_anims` — ship directional animations
-- `merchant_anims` / `native_merchant_anims` — merchant sprites
-- `get_explosion_frame(size)` — animated explosion
-
-### `game_state.py` — Shared State
-Central module for all mutable game state. Any module can import this to
-access `cities`, `units`, `merchants`, `ships`, `wars`, etc.
-
-### `warfare.py` — War System
-Documents the war declaration AI scoring system.
-War score constants (e.g. WAR_SCORE_TERRITORIAL_CLAIM = 30) control
-how aggressively AI declares war.
-
-## index.py Sections (in order)
-
-1. **Camera & Display Utilities** — zoom, pan, fullscreen
-2. **Faction Definitions & Elimination** — FACTIONS, check_eliminations
-3. **Rendering Utilities** — draw_outlined_text
-4. **Economy & Unit Definitions** — materials, costs, caps
-5. **News System** — news panel
-6. **Disasters & Weather** — hurricanes, floods, storms
-7. **Pirates** — pirate spawning mechanics
-8. **Warfare & Diplomacy** — war declarations, treaties, alliances
-9. **City Definitions** — all starting cities/forts/villages
-10. **Entity Classes** — Unit, Merchant, Settler, Ship
-11. **Combat & Encounters** — battle resolution, ship combat
-12. **Economy Updates** — material generation, upkeep, upgrades
-13. **Factions Panel & UI** — faction display
-14. **Terrain** — mountains, rivers, drawing
-15. **City Rendering** — draw_city
-16. **Date/Time & Events** — calendar, American Revolution
-17. **Game Loop** — main event loop, rendering, updates
-
-## How to Run
-
+```bash
+cd 1756-game
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
 ```
+
+The next time you open a terminal, only the activate step is required:
+
+```bash
+cd 1756-game
+source .venv/bin/activate
+```
+
+### Linux
+
+Debian, Ubuntu, and related distributions need the venv module installed with Python:
+
+```bash
+sudo apt update
+sudo apt install python3 python3-pip python3-venv
+python3 --version
+```
+
+Fedora and RHEL-family systems:
+
+```bash
+sudo dnf install python3 python3-pip
+python3 --version
+```
+
+Then create and activate the environment:
+
+```bash
+cd 1756-game
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
+
+Later sessions only need activation:
+
+```bash
+cd 1756-game
+source .venv/bin/activate
+```
+
+### Windows
+
+Install Python 3.10 or newer from [python.org](https://www.python.org/downloads/) and enable **Add python.exe to PATH** in the installer. Confirm it in a new terminal:
+
+```bat
+py -3 --version
+```
+
+**Command Prompt**
+
+```bat
+cd 1756-game
+py -3 -m venv .venv
+.venv\Scripts\activate.bat
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
+
+**PowerShell**
+
+```powershell
+cd 1756-game
+py -3 -m venv .venv
+.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
+
+If PowerShell blocks the activate script, allow scripts for your user once, then run the activate command again:
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+```
+
+**Git Bash**
+
+```bash
+cd 1756-game
+py -3 -m venv .venv
+source .venv/Scripts/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
+
+Later sessions: open a terminal in the project directory and run the activate command for that shell (`.venv\Scripts\activate.bat`, `.venv\Scripts\Activate.ps1`, or `source .venv/Scripts/activate`).
+
+## Run
+
+Stay in the project directory. Image paths such as `images/nasasatelliteview.jpg` are relative to that folder. With the virtual environment activated:
+
+```bash
 python index.py
 ```
 
-Requires: pygame-ce (or pygame), Python 3.10+
-Optional: Pillow (for animated explosion GIF)
+- **Play** opens the scenario picker. Click a card to start.
+- **Codex** shows nations, flags, and infantry and cavalry sprites.
+- **Escape** pauses. From the pause menu you can resume, return to the main menu, or exit.
+- **F11** toggles fullscreen.
+- Click cities, units, and the on-screen panels to inspect and give orders. The speed controls change how fast days pass.
 
-## Factions
+## Project structure
 
-- **Spain** — Mexico City (capital), Havana, Merida, Caracas, etc.
-- **France** — Quebec (capital), New Orleans, Port-au-Prince, etc.
-- **Great Britain** — Boston (capital), New York, Charleston, Nassau, etc.
-- **Russia** — Sitka (capital)
-- **Iroquois** — Onondaga (native faction)
-- **Wabanaki** — Norridgewock (native faction)
-- **Comanche** — Comancheria (native faction, horsemen)
-- **Pirates** — spawn randomly at Caribbean ports
-- **United States** — spawns April 19, 1775 (American Revolution)
+```
+1756-game/
+├── index.py            Main loop, entities, rendering, events, and scenarios
+├── config.py           Display, economy, movement, and balance constants
+├── game_state.py       Shared lists: cities, units, wars, treaties, clock
+├── cities_data.py      Starting settlements and later founded cities
+├── historical_data.py  Demographics, religion, and population tables
+├── rulers.py           Ruler timelines and portraits
+├── warfare.py          War-score weights and diplomacy notes
+├── collision.py        Land and water checks, A* pathfinding
+├── sprites.py          Spritesheet loading for units, ships, and merchants
+├── utilities.py        Regiment, settlement, and governor name generators
+├── requirements.txt    Python packages for the virtual environment
+├── .gitignore          Python bytecode, virtualenvs, and build output
+└── images/             Map, collision mask, flags, sprites, and portraits
+```
+
+Edit `config.py` to change starting resources, unit costs, movement, disaster chances, treaty length, and war thresholds.
+
+## Map and collision
+
+- `images/nasasatelliteview.jpg` is the visual map. It has no effect on movement.
+- `images/collisonmap.png` is the movement mask. The filename is spelled `collisonmap`. Red pixels are land. Blue pixels are water. Units, merchants, and settlers walk on land. Ships sail on water.
+- `images/climates.png` sets the biome at each point.
+- `images/regionmap.png` defines territories. Colored land inside black borders is a region. White is ocean.
+
+`collision.py` exposes `is_water` and `is_land`, A* routes with `find_water_path` and `find_land_path`, and `path_needs_boat` when a land route has to cross water.

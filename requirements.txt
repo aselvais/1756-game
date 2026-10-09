@@ -1,0 +1,5 @@
+# pygame-ce provides the pygame module. Install pygame instead only if pygame-ce
+# will not build, and install only one of the two.
+pygame-ce
+Pillow
+numpy
