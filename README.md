@@ -18,6 +18,51 @@ The first release build compiles the renderer and takes a few minutes. Later lau
 
 The Rust port runs the calendar, cities, economy, armies, merchants, settlers, wars, treaties, alliances, disasters, pirates, and the historical events for each scenario. It uses the same paintings, flags, building art, and sprite sheets as the Python game. The laws screen, governor portraits, and separate battle viewer are left out. Armies move in straight lines, and they sail when the pixel under them is water.
 
+### Windows executable
+
+The `bundle` feature packs `images/` into one 64-bit Windows program. Copy `colonial_simulator.exe` to a Windows 10 or Windows 11 PC and double-click it. The first launch unpacks the pictures into `%TEMP%\colonial_simulator-0.1.0\images`. Later launches reuse that copy. Ruler portraits are left out of the package, because the Rust port does not show them.
+
+Build it from macOS. Install the Windows Rust target and the MinGW linker once:
+
+```bash
+source "$HOME/.cargo/env"
+rustup target add x86_64-pc-windows-gnu
+brew install mingw-w64
+```
+
+Then, from the project directory:
+
+```bash
+cd 1756-game
+RUSTFLAGS="-C target-feature=+crt-static -C link-arg=-mwindows" \
+  cargo build --release --target x86_64-pc-windows-gnu --features bundle
+```
+
+`+crt-static` links the C runtime into the executable, so the file does not need extra MinGW DLLs. `-mwindows` opens the game without a console window. Cargo writes the program to:
+
+```text
+target/x86_64-pc-windows-gnu/release/colonial_simulator.exe
+```
+
+A smaller copy can be placed in `dist/`. That folder is gitignored:
+
+```bash
+mkdir -p dist
+cp target/x86_64-pc-windows-gnu/release/colonial_simulator.exe dist/colonial_simulator.exe
+x86_64-w64-mingw32-strip dist/colonial_simulator.exe
+```
+
+On Linux, install the same linker with `sudo apt install gcc-mingw-w64`, add the `x86_64-pc-windows-gnu` target, and run the `cargo build` command above.
+
+On Windows, install [Rust](https://rustup.rs/) with the `x86_64-pc-windows-gnu` toolchain, open the project folder, and run:
+
+```bat
+set RUSTFLAGS=-C target-feature=+crt-static -C link-arg=-mwindows
+cargo build --release --target x86_64-pc-windows-gnu --features bundle
+```
+
+The executable is written to the same `target\x86_64-pc-windows-gnu\release\` path.
+
 ## Scenarios
 
 From the main menu, choose **Play**, then a start date:

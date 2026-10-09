@@ -4,7 +4,15 @@ version = "0.1.0"
 edition = "2021"
 description = "Rust port of Colonial Simulator, the colonial grand strategy game."
 
+[features]
+# Packs images/ into the executable and unpacks it on launch.
+bundle = ["dep:zip"]
+
 [dependencies]
 macroquad = "0.4"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp"] }
 rand = "0.8"
+zip = { version = "2", optional = true, default-features = false, features = ["deflate"] }
+
+[build-dependencies]
+zip = { version = "2", default-features = false, features = ["deflate"] }

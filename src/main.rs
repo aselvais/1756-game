@@ -1,7 +1,8 @@
 //! Colonial Simulator — Rust port.
 //!
 //! Run from the repository with `cargo run --release`. Images are loaded from
-//! the `images/` directory next to this crate.
+//! the `images/` directory next to this crate. A Windows build with
+//! `--features bundle` carries those images inside the executable.
 
 mod art;
 mod config;
@@ -69,9 +70,13 @@ struct App {
 
 #[macroquad::main(window_conf)]
 async fn main() {
+    #[cfg(windows)]
+    install_panic_dialog();
     draw_text("Loading Colonial Simulator...", 48.0, 80.0, 36.0, WHITE);
+    #[cfg(feature = "bundle")]
+    draw_text("Preparing game files...", 48.0, 130.0, 24.0, WHITE);
     next_frame().await;
-    let images = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("images");
+    let images = images_dir();
     let maps = Maps::load(&images).unwrap_or_else(|err| {
         eprintln!("{err}");
         panic!("could not load game images from {}", images.display());
@@ -1550,6 +1555,87 @@ struct DateLayout {
     date_w: f32,
     season_w: f32,
     coord_text: String,
+}
+
+fn images_dir() -> PathBuf {
+    #[cfg(feature = "bundle")]
+    {
+        bundled_images()
+    }
+    #[cfg(not(feature = "bundle"))]
+    {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("images")
+    }
+}
+
+/// Unpack the images stored in the executable. Later launches reuse the copy
+/// when the packed archive is unchanged.
+#[cfg(feature = "bundle")]
+fn bundled_images() -> PathBuf {
+    let data: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/images.zip"));
+    let root = std::env::temp_dir().join(format!("colonial_simulator-{}", env!("CARGO_PKG_VERSION")));
+    let images = root.join("images");
+    let stamp = root.join("stamp");
+    let expected = data.len().to_string();
+    if stamp.is_file()
+        && std::fs::read_to_string(&stamp).ok().as_deref() == Some(expected.as_str())
+        && images.join("nasasatelliteview.jpg").is_file()
+    {
+        return images;
+    }
+    if root.exists() {
+        let _ = std::fs::remove_dir_all(&root);
+    }
+    std::fs::create_dir_all(&images).unwrap_or_else(|err| panic!("could not create {}: {err}", images.display()));
+    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(data))
+        .unwrap_or_else(|err| panic!("bundled images are unreadable: {err}"));
+    for index in 0..archive.len() {
+        let mut file = archive.by_index(index).unwrap_or_else(|err| panic!("bundled images are unreadable: {err}"));
+        let Some(rel) = file.enclosed_name().map(|path| path.to_owned()) else {
+            continue;
+        };
+        let path = images.join(&rel);
+        if file.is_dir() {
+            std::fs::create_dir_all(&path).unwrap_or_else(|err| panic!("{}: {err}", path.display()));
+            continue;
+        }
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).unwrap_or_else(|err| panic!("{}: {err}", parent.display()));
+        }
+        let mut out = std::fs::File::create(&path).unwrap_or_else(|err| panic!("{}: {err}", path.display()));
+        std::io::copy(&mut file, &mut out).unwrap_or_else(|err| panic!("{}: {err}", path.display()));
+    }
+    std::fs::write(&stamp, &expected).unwrap_or_else(|err| panic!("could not write {}: {err}", stamp.display()));
+    images
+}
+
+#[cfg(windows)]
+fn install_panic_dialog() {
+    std::panic::set_hook(Box::new(|info| {
+        let msg = info.to_string();
+        eprintln!("{msg}");
+        message_box(&msg);
+    }));
+}
+
+#[cfg(windows)]
+fn message_box(text: &str) {
+    let text = std::ffi::CString::new(text).unwrap_or_else(|_| std::ffi::CString::new("Colonial Simulator failed").unwrap());
+    let caption = std::ffi::CString::new("Colonial Simulator").unwrap();
+    unsafe {
+        MessageBoxA(std::ptr::null_mut(), text.as_ptr(), caption.as_ptr(), 0x10);
+    }
+}
+
+#[cfg(windows)]
+#[link(name = "user32")]
+extern "system" {
+    fn MessageBoxA(
+        hwnd: *mut std::ffi::c_void,
+        text: *const std::ffi::c_char,
+        caption: *const std::ffi::c_char,
+        utype: u32,
+    ) -> i32;
 }
 
 fn gold() -> Color {
