@@ -63,6 +63,58 @@ cargo build --release --target x86_64-pc-windows-gnu --features bundle
 
 The executable is written to the same `target\x86_64-pc-windows-gnu\release\` path.
 
+### macOS application
+
+The same `bundle` feature packs `images/` into a macOS program. Build it on the Mac that will run it. An Apple Silicon Mac produces an arm64 program. An Intel Mac produces an x86_64 program.
+
+From the project directory:
+
+```bash
+source "$HOME/.cargo/env"
+cd 1756-game
+cargo build --release --features bundle
+```
+
+Cargo writes the program to `target/release/colonial_simulator`. The first launch unpacks the pictures into a `colonial_simulator-0.1.0` folder under the temporary directory (`$TMPDIR`). Later launches reuse that copy. Ruler portraits are left out, because the Rust port does not show them.
+
+Turn that program into an application you can double-click:
+
+```bash
+APP="dist/Colonial Simulator.app"
+mkdir -p "$APP/Contents/MacOS"
+cp target/release/colonial_simulator "$APP/Contents/MacOS/colonial_simulator"
+strip "$APP/Contents/MacOS/colonial_simulator"
+cat > "$APP/Contents/Info.plist" << 'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleName</key>
+  <string>Colonial Simulator</string>
+  <key>CFBundleDisplayName</key>
+  <string>Colonial Simulator</string>
+  <key>CFBundleIdentifier</key>
+  <string>com.colonialsimulator.game</string>
+  <key>CFBundleVersion</key>
+  <string>0.1.0</string>
+  <key>CFBundleShortVersionString</key>
+  <string>0.1.0</string>
+  <key>CFBundleExecutable</key>
+  <string>colonial_simulator</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>11.0</string>
+  <key>NSHighResolutionCapable</key>
+  <true/>
+</dict>
+</plist>
+EOF
+codesign --force --sign - "$APP"
+```
+
+`dist/` is gitignored. Open `dist/Colonial Simulator.app` from Finder. The first time macOS may ask you to confirm the app in System Settings, because this signature is local and not an Apple Developer ID.
+
 ## Scenarios
 
 From the main menu, choose **Play**, then a start date:
