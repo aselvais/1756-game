@@ -4,6 +4,12 @@ A pygame grand strategy simulation of colonial and nineteenth-century America. T
 
 The window title is **Colonial Simulator**. The Python game starts from `index.py`. A Rust port of the same simulation lives in this folder and starts with Cargo.
 
+
+![](docs/Screenshot01.png)
+
+![](docs/Screenshot02.png)
+
+
 ## Rust port
 
 The Rust version keeps the Python sources. It loads the same `images/` map, collision mask, climates, and territory file. Install [Rust](https://rustup.rs/) if `cargo` is not already on your `PATH`. On macOS and Linux, a new terminal needs the Cargo environment:
