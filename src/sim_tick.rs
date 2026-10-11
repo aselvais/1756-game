@@ -12,27 +12,161 @@ impl Game {
         format!("{} {} {}", self.day, MONTHS[(self.month - 1) as usize], self.year)
     }
 
+    /// Map color for a faction's territory. A sovereign nation uses its own
+    /// palette color; a puppet instead shows a noticeably different SHADE of
+    /// its overlord's color, so it reads as part of the overlord's bloc while
+    /// staying distinguishable (and distinct from sibling puppets).
+    fn display_color(&self, faction: &str) -> [u8; 3] {
+        match self.puppets.get(faction) {
+            Some(overlord) => {
+                let base = faction_color(overlord);
+                // Deterministic per-puppet shift: a stable hash picks a
+                // brightness factor so each puppet of the same overlord gets a
+                // clearly different shade, biased darker so the overlord stays
+                // the "brightest" of its bloc.
+                let h = name_seed(faction);
+                // Factor in roughly 0.45..=0.80 of the overlord's brightness.
+                let f = 0.45 + (h % 36) as f32 / 100.0;
+                let shade = |c: u8| (c as f32 * f).round().clamp(0.0, 255.0) as u8;
+                // Nudge one channel the other way so same-brightness picks still
+                // differ in hue, keeping siblings apart.
+                let bump = ((h / 7) % 3) as usize;
+                let mut out = [shade(base[0]), shade(base[1]), shade(base[2])];
+                out[bump] = (out[bump] as u16 + 40).min(255) as u8;
+                out
+            }
+            None => faction_color(faction),
+        }
+    }
+
     pub fn region_owners(&self, count: i32) -> Vec<Option<[u8; 4]>> {
         let n = count.max(0) as usize;
-        let mut names: Vec<Option<String>> = vec![None; n];
+        // A region is owned by whichever nation most recently settled it. Each
+        // settler-founded city carries a monotonic `founded_order`; the highest
+        // order in a region wins, so a later settler takes the region from an
+        // earlier one. Scenario-start cities all share order 0, so among those a
+        // capital wins the tie and otherwise the first one found stands.
+        let mut best: Vec<Option<(u64, bool, String)>> = vec![None; n];
         for c in &self.cities {
-            if is_native(&c.owner) || c.region < 0 || c.region as usize >= n {
+            if c.region < 0 || c.region as usize >= n {
                 continue;
             }
-            // Capitals win ties. The first non-capital claim otherwise stands.
-            if names[c.region as usize].is_none() || c.is_capital {
-                names[c.region as usize] = Some(c.owner.clone());
+            // Mobile tribes (Comanche, Cree, Dakota) keep camps and villages but
+            // do not claim territory, so their settlements never color a region.
+            if !claims_territory(&c.owner) {
+                continue;
+            }
+            let slot = &mut best[c.region as usize];
+            let takes = match slot {
+                None => true,
+                Some((order, cap, _)) => {
+                    c.founded_order > *order || (c.founded_order == *order && c.is_capital && !*cap)
+                }
+            };
+            if takes {
+                *slot = Some((c.founded_order, c.is_capital, c.owner.clone()));
             }
         }
-        names
-            .into_iter()
-            .map(|name| {
+        // Resolve each region to an owning nation name: a city in the region
+        // wins (so conquering a city still recolors its region as you play);
+        // otherwise an authored starting claim from the scenario map applies.
+        (0..n)
+            .map(|r| {
+                let name = best[r]
+                    .as_ref()
+                    .map(|(_, _, name)| name.clone())
+                    .or_else(|| self.region_claims.get(&(r as i32)).cloned());
                 name.map(|name| {
-                    let c = faction_color(&name);
+                    let c = self.display_color(&name);
                     [c[0], c[1], c[2], 130]
                 })
             })
             .collect()
+    }
+
+    /// The nation owning a region: the claims-territory city with the highest
+    /// `founded_order` in that region (capital breaks ties), else an authored
+    /// `region_claims` entry. Mirrors `region_owners` but returns the name.
+    fn region_owner_name(&self, region: i32) -> Option<String> {
+        if region < 0 {
+            return None;
+        }
+        let mut best: Option<(u64, bool, &str)> = None;
+        for c in &self.cities {
+            if c.region != region || !claims_territory(&c.owner) {
+                continue;
+            }
+            let takes = match best {
+                None => true,
+                Some((order, cap, _)) => {
+                    c.founded_order > order || (c.founded_order == order && c.is_capital && !cap)
+                }
+            };
+            if takes {
+                best = Some((c.founded_order, c.is_capital, c.owner.as_str()));
+            }
+        }
+        best.map(|(_, _, name)| name.to_string())
+            .or_else(|| self.region_claims.get(&region).cloned())
+    }
+
+    /// True if the region containing city `idx` touches a region owned by a
+    /// different nation (or by no one) — i.e. it sits on the national frontier.
+    fn city_on_border(&self, idx: usize, maps: &Maps) -> bool {
+        let region = self.cities[idx].region;
+        if region < 0 {
+            return false;
+        }
+        let owner = self.cities[idx].owner.clone();
+        self.border_region_from(region, &owner, maps).is_some()
+    }
+
+    /// Given one of a faction's regions, return it if it borders foreign/empty
+    /// land. Helper so a guard can confirm its anchor is still a frontier.
+    fn border_region_from(&self, region: i32, owner: &str, maps: &Maps) -> Option<i32> {
+        for &nb in maps.region_neighbors(region) {
+            match self.region_owner_name(nb) {
+                Some(ref n) if n == owner => continue,
+                Some(ref n) if self.same_bloc(owner, n) => continue,
+                _ => return Some(region),
+            }
+        }
+        None
+    }
+
+    /// A world-space anchor point for a border-guarding unit of `faction`:
+    /// the centroid of one of the faction's frontier regions (the one nearest
+    /// to the fallback `(fx, fy)`, usually the home city). Falls back to the
+    /// home point when the faction has no mapped border regions.
+    fn guard_anchor_for(&self, faction: &str, maps: &Maps, fx: f32, fy: f32) -> (i32, (f32, f32)) {
+        // Collect the faction's owned regions (from its cities + authored map).
+        let mut owned: std::collections::HashSet<i32> = self
+            .cities
+            .iter()
+            .filter(|c| c.owner == faction && c.region >= 0)
+            .map(|c| c.region)
+            .collect();
+        for (region, nation) in &self.region_claims {
+            if nation == faction {
+                owned.insert(*region);
+            }
+        }
+        let mut best: Option<(i32, (f32, f32), f32)> = None;
+        for &region in &owned {
+            if self.border_region_from(region, faction, maps).is_none() {
+                continue;
+            }
+            if let Some((cx, cy)) = maps.region_centroid_world(region) {
+                let d = dist(cx, cy, fx, fy);
+                if best.as_ref().map(|(_, _, bd)| d < *bd).unwrap_or(true) {
+                    best = Some((region, (cx, cy), d));
+                }
+            }
+        }
+        match best {
+            Some((region, pt, _)) => (region, pt),
+            None => (-1, (fx, fy)),
+        }
     }
 
     fn remember(&mut self, a: &str, b: &str) -> Pair {
@@ -136,8 +270,20 @@ impl Game {
         let big = self.cities.iter().filter(|c| c.sovereign == loser).count() > 3;
         let roll = rand::thread_rng().gen_range(0..4);
         let annex = !big && roll == 2;
+        // A sizable, already-free loser can be made a puppet instead of a plain
+        // peace: the occupied cities return but the nation is subordinated.
+        let can_puppet = big && !self.puppets.contains_key(loser) && self.overlord_of(victor).is_none();
+        let puppet = can_puppet && roll == 0;
         let gold = rand::thread_rng().gen_range(10..80);
-        if annex {
+        if puppet {
+            for c in &mut self.cities {
+                if occupied.contains(&c.id) {
+                    let sov = c.sovereign.clone();
+                    c.owner = sov;
+                }
+            }
+            self.make_puppet(victor, loser);
+        } else if annex {
             for c in &mut self.cities {
                 if occupied.contains(&c.id) {
                     c.sovereign = c.owner.clone();
@@ -255,12 +401,17 @@ impl Game {
         }
         if d == 30 && m == 4 && y == 1803 {
             for c in &mut self.cities {
-                if matches!(c.name.as_str(), "New Orleans" | "Saint-Louis") && c.owner == "France" {
+                if matches!(c.name.as_str(), "New Orleans" | "Saint-Louis")
+                    && (c.owner == "France" || c.owner == "Louisiana")
+                {
                     c.owner = "United States".into();
                     c.sovereign = "United States".into();
                     c.is_capital = false;
                 }
             }
+            // The French Louisiana puppet is dissolved into the United States.
+            self.puppets.remove("Louisiana");
+            self.eliminated.insert("Louisiana".into());
             self.news("Louisiana Purchase! France sells New Orleans and Saint-Louis to the United States.");
             self.paper("Louisiana Purchase!", "France sells the Louisiana Territory to the United States.");
         }
@@ -328,10 +479,294 @@ impl Game {
                 c.population = (c.population + add).max(50);
                 c.pop_acc -= add as f32;
             }
-            if c.happiness < 80 {
-                c.happiness = (c.happiness + 1).min(100);
+        }
+        // Drift each city's happiness toward a target shaped by its laws,
+        // government, demographics, wars, and status — so happiness reflects
+        // the whole game state instead of always rising to 80.
+        let targets: Vec<(usize, i32)> =
+            (0..self.cities.len()).map(|i| (i, self.happiness_target(i))).collect();
+        for (i, target) in targets {
+            let c = &mut self.cities[i];
+            if c.happiness < target {
+                c.happiness = (c.happiness + 1).min(target);
+            } else if c.happiness > target {
+                c.happiness = (c.happiness - 1).max(target);
+            }
+            c.happiness = c.happiness.clamp(0, 100);
+        }
+    }
+
+    /// The enfranchised share of a settlement: the fraction of people who get a
+    /// political voice. Ethnic groups that are Segregated/Suppressed/Enslaved
+    /// (status rank >= 2) are excluded, as are disenfranchised commoners under
+    /// non-republican governments. Always leaves a small floor so a town is
+    /// never fully voiceless.
+    fn electorate_share(&self, i: usize) -> f32 {
+        let c = &self.cities[i];
+        let nation = if c.sovereign.is_empty() { &c.owner } else { &c.sovereign };
+        // Sum the share of ethnic groups whose legal status allows a voice.
+        let mut enfranchised: f32 = c
+            .ethnicity
+            .iter()
+            .filter(|(k, _)| ethnic_status_rank(nation, k, self.year) < 2)
+            .map(|(_, s)| *s)
+            .sum();
+        // Under a constitutional monarchy, commoners have a narrower franchise.
+        let (gov_key, _) = government_of(nation, self.year);
+        if gov_key == "constitutionalmonarchy" {
+            // Only aristocracy plus a slice of commoners vote.
+            let voting = c.aristocracy + (1.0 - c.aristocracy) * 0.4;
+            enfranchised *= voting;
+        }
+        enfranchised.clamp(0.05, 1.0)
+    }
+
+    /// A settlement's party favor as four shares summing to 1.0, scored from
+    /// local conditions (taxation, rights, war, trade, tradition) against each
+    /// party's stance. Aristocracy tilts toward tradition/order; commoners
+    /// toward reform.
+    fn settlement_party_favor(&self, i: usize) -> [f32; 4] {
+        let c = &self.cities[i];
+        let nation = if c.sovereign.is_empty() { &c.owner } else { &c.sovereign };
+        let laws = self.laws.get(nation);
+        let taxation = laws.and_then(|l| l.get(3).copied()).unwrap_or(2);
+        let ethnic_law = laws.and_then(|l| l.get(0).copied()).unwrap_or(0);
+        let religion_law = laws.and_then(|l| l.get(2).copied()).unwrap_or(0);
+
+        // Condition signals in roughly [-1, 1].
+        // Desire for tax relief rises with heavier taxation.
+        let tax_relief = match taxation {
+            0 => -0.8,
+            1 => -0.3,
+            2 => 0.2,
+            _ => 1.0,
+        };
+        // Desire for rights/reform rises where laws are repressive.
+        let rights = (ethnic_law.max(religion_law) as f32 / 3.0) * 2.0 - 0.3;
+        // War hawk sentiment when the nation is at war.
+        let at_war = self.wars.iter().any(|p| self.war_names.get(p).is_some_and(|(a, b)| a == nation || b == nation));
+        let war_hawk = if at_war { 0.8 } else { -0.4 };
+        // Trade/commercial character from development and markets.
+        let trade = (c.tier as f32 / 3.0) + if c.buildings.iter().any(|b| b == "Market") { 0.4 } else { 0.0 } - 0.4;
+        // Tradition pull from the aristocracy fraction.
+        let tradition = c.aristocracy * 4.0 - 0.4;
+
+        let mut scores = [0.0f32; 4];
+        for (p, score) in scores.iter_mut().enumerate() {
+            let (w_tax, w_rights, w_war, w_trade, w_trad) = party_stance(p);
+            *score = w_tax * tax_relief
+                + w_rights * rights
+                + w_war * war_hawk
+                + w_trade * trade
+                + w_trad * tradition;
+        }
+        // Softmax-ish: shift to positive and normalize.
+        let min = scores.iter().cloned().fold(f32::INFINITY, f32::min);
+        let mut total = 0.0;
+        for s in &mut scores {
+            *s = (*s - min + 0.5).max(0.0);
+            total += *s;
+        }
+        if total > 0.0 {
+            for s in &mut scores {
+                *s /= total;
+            }
+        } else {
+            scores = [0.25; 4];
+        }
+        scores
+    }
+
+    /// Public lookup of a settlement's party favor by city id, for the UI.
+    pub fn settlement_party_favor_of(&self, id: u32) -> Option<[f32; 4]> {
+        let i = self.cities.iter().position(|c| c.id == id)?;
+        Some(self.settlement_party_favor(i))
+    }
+
+    /// The national party pie: each settlement's favor weighted by its
+    /// enfranchised population. Returns four shares summing to ~1.0.
+    pub fn nation_party_pie(&self, nation: &str) -> [f32; 4] {
+        let mut acc = [0.0f32; 4];
+        let mut weight_total = 0.0f32;
+        for i in 0..self.cities.len() {
+            let c = &self.cities[i];
+            let n = if c.sovereign.is_empty() { &c.owner } else { &c.sovereign };
+            if n != nation {
+                continue;
+            }
+            let w = c.population as f32 * self.electorate_share(i);
+            if w <= 0.0 {
+                continue;
+            }
+            let favor = self.settlement_party_favor(i);
+            for p in 0..4 {
+                acc[p] += favor[p] * w;
+            }
+            weight_total += w;
+        }
+        if weight_total > 0.0 {
+            for a in &mut acc {
+                *a /= weight_total;
             }
         }
+        acc
+    }
+
+    /// Holds elections for every elective nation: the party with the highest
+    /// national pie share takes power. Non-elective nations are skipped.
+    fn run_elections(&mut self) {
+        let nations: Vec<String> = {
+            let mut set: Vec<String> = Vec::new();
+            for c in &self.cities {
+                let n = if c.sovereign.is_empty() { &c.owner } else { &c.sovereign };
+                if !n.is_empty() && !set.contains(n) {
+                    set.push(n.clone());
+                }
+            }
+            set
+        };
+        for nation in nations {
+            let (gov_key, _) = government_of(&nation, self.year);
+            if !is_elective(gov_key) {
+                self.ruling_party.remove(&nation);
+                continue;
+            }
+            let pie = self.nation_party_pie(&nation);
+            let winner = (0..4).max_by(|a, b| pie[*a].partial_cmp(&pie[*b]).unwrap()).unwrap_or(0);
+            let prev = self.ruling_party.insert(nation.clone(), winner);
+            if prev != Some(winner) {
+                let party = parties_of(&nation)[winner];
+                self.news(format!("{nation} election: the {party} party takes power!"));
+            }
+        }
+    }
+
+    /// Gold-tax income multiplier from a nation's Taxation law (category 3):
+    /// None 0.0, Low 0.5, Standard 1.0, Heavy 1.5.
+    fn tax_multiplier(&self, nation: &str) -> f32 {
+        match self.laws.get(nation).and_then(|l| l.get(3).copied()).unwrap_or(2) {
+            0 => 0.0,
+            1 => 0.5,
+            3 => 1.5,
+            _ => 1.0,
+        }
+    }
+
+    /// Public lookup of a city's happiness target by id, for the UI.
+    pub fn happiness_target_of(&self, id: u32) -> Option<i32> {
+        let i = self.cities.iter().position(|c| c.id == id)?;
+        Some(self.happiness_target(i))
+    }
+
+    /// The happiness level a settlement is drifting toward, from a neutral base
+    /// adjusted by: government type, the ethnic/religion laws as they affect the
+    /// groups actually present, whether the nation is at war, puppet status,
+    /// city development, and the ruling nation matching the local majority.
+    fn happiness_target(&self, i: usize) -> i32 {
+        let c = &self.cities[i];
+        let nation = if c.sovereign.is_empty() { &c.owner } else { &c.sovereign };
+        let mut t: f32 = 55.0;
+
+        // Government type baseline.
+        let (gov_key, _) = government_of(nation, self.year);
+        t += match gov_key {
+            "republic" => 10.0,
+            "constitutionalmonarchy" => 6.0,
+            "confederation" => 4.0,
+            "colonialgovernment" => 0.0,
+            "tribal" => 6.0,
+            "monarchy" => -6.0,
+            "militarygovernment" => -10.0,
+            _ => 0.0,
+        };
+
+        // Laws, weighted by the share of the population they actually affect.
+        let laws = self.laws.get(nation);
+        let ethnic_law = laws.and_then(|l| l.get(0).copied()).unwrap_or(0);
+        let religion_law = laws.and_then(|l| l.get(2).copied()).unwrap_or(0);
+        // Ethnic law: harsher regimes anger the share they oppress.
+        let per_level_eth = match ethnic_law {
+            0 => 10.0,  // Protected rights lift everyone
+            1 => -4.0,  // Segregated
+            2 => -14.0, // Suppressed
+            _ => -26.0, // Enslaved
+        };
+        // Religion law hits non-state faiths.
+        let per_level_rel = match religion_law {
+            0 => 8.0,
+            1 => -2.0,
+            2 => -12.0,
+            _ => -22.0,
+        };
+        if ethnic_law == 0 {
+            t += per_level_eth;
+        } else {
+            // Weight by the minority (non-ruling) share.
+            let ruling = owner_ethnicity_key(nation);
+            let minority: f32 = c.ethnicity.iter().filter(|(k, _)| k != ruling).map(|(_, s)| *s).sum();
+            t += per_level_eth * minority;
+        }
+        if religion_law == 0 {
+            t += per_level_rel;
+        } else {
+            let state = owner_religion_key(nation);
+            let dissent: f32 = c.religion.iter().filter(|(k, _)| k != state).map(|(_, s)| *s).sum();
+            t += per_level_rel * dissent;
+        }
+
+        // Conscription law weighs on the people.
+        let conscription = laws.and_then(|l| l.get(1).copied()).unwrap_or(0);
+        t += match conscription {
+            0 => 6.0,
+            1 => 0.0,
+            2 => -5.0,
+            _ => -12.0,
+        };
+
+        // Taxation law: lighter taxes please the people, heavy taxes anger them.
+        let taxation = laws.and_then(|l| l.get(3).copied()).unwrap_or(2);
+        t += match taxation {
+            0 => 15.0,
+            1 => 8.0,
+            2 => 0.0,
+            _ => -15.0,
+        };
+
+        // The ruling ethnicity matching the local majority is reassuring; a
+        // foreign ruling class over a different majority breeds resentment.
+        if let Some((top_key, top_share)) = c
+            .ethnicity
+            .iter()
+            .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
+        {
+            if top_key == owner_ethnicity_key(nation) {
+                t += 6.0 * top_share;
+            } else {
+                t -= 8.0 * top_share;
+            }
+        }
+
+        // At war: war-weariness lowers morale everywhere.
+        if self.wars.iter().any(|p| self.war_names.get(p).is_some_and(|(a, b)| a == nation || b == nation)) {
+            t -= 8.0;
+        }
+
+        // Puppets chafe under a foreign overlord.
+        if self.puppets.contains_key(nation) {
+            t -= 6.0;
+        }
+
+        // Development: bigger, built-up cities are a little happier; occupied
+        // settlements (owner != sovereign) are restless.
+        t += (c.tier as f32) * 2.0;
+        if c.buildings.iter().any(|b| b == "Church") {
+            t += 4.0;
+        }
+        if c.owner != c.sovereign {
+            t -= 15.0;
+        }
+
+        t.round().clamp(0.0, 100.0) as i32
     }
 
     fn monthly_manpower(&mut self) {
@@ -378,8 +813,8 @@ impl Game {
         self.news("The American Revolution has begun!");
         self.paper("American Revolution!", "The thirteen colonies declare independence from Great Britain.");
         if let Some(idx) = self.cities.iter().position(|c| c.name == "Boston" && c.owner == "United States") {
-            self.spawn_unit(idx, self.cities[idx].id, "Line", true, false);
-            self.spawn_unit(idx, self.cities[idx].id, "Square", true, false);
+            self.spawn_unit(idx, self.cities[idx].id, "Line", true, false, "Patrol");
+            self.spawn_unit(idx, self.cities[idx].id, "Square", true, false, "Patrol");
         }
     }
 
@@ -404,6 +839,9 @@ impl Game {
             let msg = format!("Haiti declares independence from {old}!");
             self.declare_war("Haiti", &old, &msg);
         }
+        // The French Saint-Domingue puppet is replaced by independent Haiti.
+        self.puppets.remove("Saint-Domingue");
+        self.eliminated.insert("Saint-Domingue".into());
         self.news("Haitian Revolution! Haiti declares independence from France!");
         self.paper("Haitian Independence!", "Haiti becomes the first free Black republic.");
     }
@@ -487,11 +925,18 @@ impl Game {
     }
 
     fn canadian_confederation(&mut self) {
-        if self.canada_fired || self.eliminated.contains("Rupert's Land") {
+        if self.canada_fired {
             return;
         }
         self.canada_fired = true;
-        self.rename_faction("Rupert's Land", "Canada");
+        // Canada forms as its OWN new nation out of British North America — it
+        // does not replace Rupert's Land. Rupert's Land stays on the map as a
+        // distinct nation (a British puppet, see `init_puppets`) and simply
+        // transfers from Britain to the new Dominion at confederation, the way
+        // the HBC lands passed to Canada historically.
+        if !self.factions.iter().any(|f| f == "Canada") {
+            self.factions.push("Canada".into());
+        }
         self.touch("Canada");
         if let Some(s) = self.materials.get_mut("Canada") {
             s.gold += 60;
@@ -503,6 +948,7 @@ impl Game {
             {
                 c.owner = "Canada".into();
                 c.sovereign = "Canada".into();
+                c.builder = "Canada".into();
                 c.is_capital = false;
             }
             if c.owner == "Canada" {
@@ -511,10 +957,23 @@ impl Game {
         }
         self.puppets.insert("Canada".into(), "Great Britain".into());
         self.focus.insert("Canada".into(), "Economic".into());
+        // Rupert's Land passes from the British Crown to the Dominion of Canada,
+        // but only if it is still around and still a British puppet.
+        if !self.eliminated.contains("Rupert's Land")
+            && self.puppets.get("Rupert's Land").map(|o| o.as_str()) == Some("Great Britain")
+        {
+            self.puppets.insert("Rupert's Land".into(), "Canada".into());
+            self.claims_dirty = true;
+        }
         self.news("Canadian Confederation! The Dominion of Canada is formed.");
-        self.paper("Canadian Confederation!", "Rupert's Land and British North America unite. Ottawa is the capital.");
+        self.paper("Canadian Confederation!", "British North America unites as the Dominion of Canada. Ottawa is the capital, and Rupert's Land passes to the new dominion.");
     }
 
+    /// Reserved helper: wholesale rename/merge one faction into another. No
+    /// event currently uses it (Canadian Confederation now spawns Canada as a
+    /// separate nation rather than renaming Rupert's Land), but it is kept for
+    /// any future faction-transformation event.
+    #[allow(dead_code)]
     fn rename_faction(&mut self, old: &str, new: &str) {
         if let Some(slot) = self.factions.iter_mut().find(|f| f.as_str() == old) {
             *slot = new.into();
@@ -567,6 +1026,7 @@ impl Game {
         self.rekey_pairs(old, new);
     }
 
+    #[allow(dead_code)]
     fn rekey_pairs(&mut self, old: &str, new: &str) {
         let rename = |name: String| if name == old { new.to_string() } else { name };
         let named = std::mem::take(&mut self.war_names);
@@ -591,7 +1051,7 @@ impl Game {
         self.fatigue = rekey_map(std::mem::take(&mut self.fatigue), &remap);
     }
 
-    fn spawn_armies(&mut self, _maps: &Maps) {
+    fn spawn_armies(&mut self, maps: &Maps) {
         self.spawn_timer += self.speed;
         if self.spawn_timer <= DAY_TICKS * 5 {
             return;
@@ -623,7 +1083,7 @@ impl Game {
             };
             let roll: f32 = rand::random();
             if roll < w_mil {
-                self.try_spawn_unit(idx, is_fort, ucount, ucap);
+                self.try_spawn_unit(idx, is_fort, ucount, ucap, maps);
             } else if roll < w_mil + w_mer {
                 self.try_spawn_merchant(idx);
             }
@@ -635,7 +1095,7 @@ impl Game {
         }
     }
 
-    fn try_spawn_unit(&mut self, idx: usize, is_fort: bool, ucount: i32, ucap: i32) {
+    fn try_spawn_unit(&mut self, idx: usize, is_fort: bool, ucount: i32, ucap: i32, maps: &Maps) {
         let faction = self.cities[idx].owner.clone();
         let (x, y) = (self.cities[idx].x, self.cities[idx].y);
         let id = self.cities[idx].id;
@@ -668,15 +1128,36 @@ impl Game {
         if let Some(s) = self.materials.get_mut(&faction) {
             s.pay(&cost);
         }
-        let (target, idle, patrol) = if let Some(t) = enemies.choose_rand() {
-            (*t, false, false)
+        let (target, idle, patrol, behavior) = if let Some(t) = enemies.choose_rand() {
+            // An enemy is in reach: march on it.
+            (*t, false, false, "Attack")
         } else if ucount < ucap {
-            let friend = self.cities.iter().find(|c| c.owner == faction && c.id != id && dist(x, y, c.x, c.y) < 120.0).map(|c| c.id);
-            (friend.unwrap_or(id), friend.is_none(), friend.is_some())
+            // No enemy nearby: give the garrison a peacetime standing order.
+            // Border cities tend to raise guards that hold the frontier; the
+            // rest patrol between friendly cities. Mobile tribes don't guard
+            // territory, so they always patrol.
+            let mut rng = rand::thread_rng();
+            let on_border = !is_native(&faction)
+                && self.city_on_border(idx, maps)
+                && rng.gen_bool(0.5);
+            if on_border {
+                // Guard: anchor on this city's region; destination set per tick.
+                (id, false, false, "Guard")
+            } else {
+                let friend = self
+                    .cities
+                    .iter()
+                    .find(|c| c.owner == faction && c.id != id && dist(x, y, c.x, c.y) < 160.0)
+                    .map(|c| c.id);
+                match friend {
+                    Some(fid) => (fid, false, true, "Patrol"),
+                    None => (id, true, false, "Patrol"),
+                }
+            }
         } else {
             return;
         };
-        self.spawn_unit(idx, target, &formation, idle, patrol);
+        self.spawn_unit(idx, target, &formation, idle, patrol, behavior);
         let cd = if self.cities[idx].is_fort {
             DAY_TICKS * 90
         } else if self.cities[idx].is_village {
@@ -711,7 +1192,7 @@ impl Game {
         }
     }
 
-    fn spawn_unit(&mut self, city_idx: usize, target: u32, formation: &str, idle: bool, patrol: bool) {
+    fn spawn_unit(&mut self, city_idx: usize, target: u32, formation: &str, idle: bool, patrol: bool, behavior: &str) {
         let faction = self.cities[city_idx].owner.clone();
         let (x, y) = (self.cities[city_idx].x, self.cities[city_idx].y);
         let (speed, mut power) = match formation {
@@ -755,6 +1236,11 @@ impl Game {
             patrolling: patrol,
             opponent: None,
             name: regiment_name(&faction),
+            behavior: behavior.into(),
+            path: Vec::new(),
+            path_goal: -1,
+            guard_region: -1,
+            guard_anchor: None,
             siege_timer: 0,
             siege_phase: 1,
             phase_timer: 0,
@@ -763,6 +1249,46 @@ impl Game {
             alive: true,
             ship: false,
         });
+    }
+
+    /// Picks a trade destination for a merchant leaving `from_id` at (`x`, `y`).
+    /// Instead of always taking the first in-range city (which made every
+    /// merchant converge on the same nearby town), this gathers every valid,
+    /// at-peace city within range and chooses one at random, weighted to favor
+    /// farther and less-crowded cities so trade spreads across the whole map.
+    fn pick_trade_dest(&self, faction: &str, from_id: u32, x: f32, y: f32) -> Option<u32> {
+        let mut candidates: Vec<(u32, f32)> = Vec::new();
+        for c in &self.cities {
+            if c.id == from_id || self.at_war(faction, &c.owner) {
+                continue;
+            }
+            let d = dist(x, y, c.x, c.y);
+            if d > MERCHANT_MAX_TRAVEL || d < 1.0 {
+                continue;
+            }
+            // How many merchants are already heading to this city.
+            let crowd = self
+                .merchants
+                .iter()
+                .filter(|m| m.alive && m.dest == c.id)
+                .count() as f32;
+            // Favor distance (reach far-off markets) and penalize crowding so
+            // merchants fan out rather than stacking on one route.
+            let weight = (d / MERCHANT_MAX_TRAVEL) * (1.0 / (1.0 + crowd));
+            candidates.push((c.id, weight.max(0.01)));
+        }
+        if candidates.is_empty() {
+            return None;
+        }
+        let total: f32 = candidates.iter().map(|(_, w)| w).sum();
+        let mut roll = rand::random::<f32>() * total;
+        for (id, w) in &candidates {
+            roll -= w;
+            if roll <= 0.0 {
+                return Some(*id);
+            }
+        }
+        Some(candidates[candidates.len() - 1].0)
     }
 
     fn try_spawn_merchant(&mut self, idx: usize) {
@@ -785,11 +1311,7 @@ impl Game {
             let c = &self.cities[idx];
             (c.x, c.y, c.id, c.material.clone())
         };
-        let dest = self
-            .cities
-            .iter()
-            .find(|c| c.id != id && !self.at_war(&faction, &c.owner) && dist(x, y, c.x, c.y) <= MERCHANT_MAX_TRAVEL)
-            .map(|c| c.id);
+        let dest = self.pick_trade_dest(&faction, id, x, y);
         let Some(dest) = dest else { return };
         if let Some(s) = self.materials.get_mut(&faction) {
             if native {
@@ -907,6 +1429,9 @@ impl Game {
                 if c.buildings.iter().any(|b| b == "Town Hall" || b == "Council Lodge") {
                     mult *= 1.25;
                 }
+                // Taxation law scales income: None 0x, Low 0.5x, Standard 1x, Heavy 1.5x.
+                let nation = if c.sovereign.is_empty() { &c.owner } else { &c.sovereign };
+                mult *= self.tax_multiplier(nation);
                 let base = if c.is_village || c.is_fort || c.is_camp { 2 } else { 5 };
                 (c.owner.clone(), (base as f32 * mult) as i32)
             })
@@ -1167,47 +1692,74 @@ impl Game {
         }
     }
 
+    /// Settlers are the expansion mechanic: a nation that sends a settler to a
+    /// region comes to own that region (see `region_owners`). The old caps on
+    /// forts/camps are gone — the only limits are a cooldown, a modest resource
+    /// cost so expansion is paced, and the requirement that the target be a
+    /// region the faction does not already own.
     fn maybe_settlers(&mut self, maps: &Maps) {
         self.settler_timer += self.speed;
-        if self.settler_timer < DAY_TICKS * 90 {
+        if self.settler_timer < DAY_TICKS * 60 {
             return;
         }
         self.settler_timer = 0;
-        let idxs: Vec<usize> = (0..self.cities.len()).filter(|_| rand::random::<f32>() < 0.03).collect();
+        let idxs: Vec<usize> = (0..self.cities.len()).filter(|_| rand::random::<f32>() < 0.05).collect();
         for i in idxs {
             let owner = self.cities[i].owner.clone();
             let native = is_native(&owner);
             let (x, y) = (self.cities[i].x, self.cities[i].y);
+            // Modest cost so expansion is paced but never hard-capped.
             if native {
-                let camps = self.cities.iter().filter(|c| c.owner == owner && c.is_camp).count();
-                if camps >= 3 {
-                    continue;
-                }
-                let ok = self.materials.get(&owner).is_some_and(|s| s.food >= 40 && s.hide >= 20 && s.lumber >= 10);
-                if !ok {
+                let cost = [("Food", 30), ("Hide", 15), ("Lumber", 10)];
+                if !self.materials.get(&owner).is_some_and(|s| s.afford(&cost)) {
                     continue;
                 }
                 if let Some(s) = self.materials.get_mut(&owner) {
-                    s.food -= 40;
-                    s.hide -= 20;
-                    s.lumber -= 10;
+                    s.pay(&cost);
                 }
             } else {
-                let forts = self.cities.iter().filter(|c| c.owner == owner && c.is_fort && !c.is_camp).count() as i32;
-                if forts >= FORT_CAP {
-                    continue;
-                }
-                let cost = [("Gold", 30), ("Food", 50), ("Lumber", 40), ("Iron", 5)];
-                let ok = self.materials.get(&owner).is_some_and(|s| s.afford(&cost));
-                if !ok {
+                let cost = [("Gold", 25), ("Food", 40), ("Lumber", 30)];
+                if !self.materials.get(&owner).is_some_and(|s| s.afford(&cost)) {
                     continue;
                 }
                 if let Some(s) = self.materials.get_mut(&owner) {
                     s.pay(&cost);
                 }
             }
-            let (tx, ty) = settle_spot(maps, x, y, &self.cities);
-            self.settlers.push(Settler { faction: owner, x, y, tx, ty, native, alive: true });
+            // Regions the settler may NOT target. This is the union of:
+            //  - regions this faction already owns (its cities' regions plus any
+            //    authored starting claims), so a settler expands the nation
+            //    rather than crowding home turf or overwriting its own borders;
+            //  - regions already claimed by ANY OTHER nation, so a nation can't
+            //    plant a fort/camp inside territory a rival already holds.
+            // The settler aims for a nearby region in neither bucket, i.e.
+            // genuinely unclaimed land.
+            let mut owned: std::collections::HashSet<i32> = self
+                .cities
+                .iter()
+                .filter(|c| c.owner == owner && c.region >= 0)
+                .map(|c| c.region)
+                .collect();
+            for (region, nation) in &self.region_claims {
+                if *nation == owner {
+                    owned.insert(*region);
+                }
+            }
+            // Block every region currently owned by a different nation.
+            for region in 0..maps.region_count {
+                if owned.contains(&region) {
+                    continue;
+                }
+                if let Some(holder) = self.region_owner_name(region) {
+                    if holder != owner {
+                        owned.insert(region);
+                    }
+                }
+            }
+            let Some((tx, ty)) = settle_spot(maps, x, y, &self.cities, &owned) else {
+                continue;
+            };
+            self.settlers.push(Settler { faction: owner, x, y, tx, ty, native, ship: false, alive: true });
         }
     }
 
@@ -1485,8 +2037,8 @@ impl Game {
         }
         self.eliminated.remove("Pirates");
         let id = self.cities[idx].id;
-        self.spawn_unit(idx, id, "Line", true, false);
-        self.spawn_unit(idx, id, "Line", true, false);
+        self.spawn_unit(idx, id, "Line", true, false, "Attack");
+        self.spawn_unit(idx, id, "Line", true, false, "Attack");
         self.declare_war("Pirates", &old, "");
         self.news(format!("Pirates seize {name} from {old}!"));
         self.pirates_spawned = true;
@@ -1611,42 +2163,226 @@ impl Game {
             }
             let dest = self.units[i].retreat;
             if let Some((tx, ty)) = dest {
+                // Flee home plot-to-plot, a little faster than normal.
                 let spd = self.unit_speed(i, maps) * game_speed * 1.3;
-                let (nx, ny, d) = step_toward(x, y, tx, ty, spd);
-                self.units[i].x = nx;
-                self.units[i].y = ny;
+                let d = self.advance_along_path(i, maps, tx, ty, spd);
                 if d <= 8.0 {
                     self.units[i].men = self.units[i].max_men;
                     self.units[i].retreating = false;
                     self.units[i].retreat = None;
                     self.units[i].idle = true;
+                    self.units[i].path.clear();
+                    self.units[i].path_goal = -1;
                 }
             } else {
                 self.units[i].alive = false;
             }
             return;
         }
-        let Some(city) = self.cities.iter().find(|c| c.id == target) else {
+
+        // Peacetime standing orders decide where a unit without an enemy goes.
+        match self.units[i].behavior.as_str() {
+            "Guard" => {
+                self.step_guard(i, maps, game_speed);
+                return;
+            }
+            "Patrol" => {
+                self.step_patrol(i, maps, game_speed);
+                return;
+            }
+            _ => {}
+        }
+
+        // Default "Attack" behavior: march on the target city.
+        let Some((tx, ty, city_owner)) = self
+            .cities
+            .iter()
+            .find(|c| c.id == target)
+            .map(|c| (c.x, c.y, c.owner.clone()))
+        else {
             self.units[i].idle = true;
             return;
         };
-        if city.owner != faction && self.at_peace(&faction, &city.owner) {
+        if city_owner != faction && self.at_peace(&faction, &city_owner) {
             self.units[i].idle = true;
             return;
         }
-        let (tx, ty) = (city.x, city.y);
         let spd = self.unit_speed(i, maps) * game_speed;
-        let (nx, ny, d) = step_toward(x, y, tx, ty, spd);
+        let d = self.advance_along_path(i, maps, tx, ty, spd);
         if d > 5.0 {
-            self.units[i].x = nx;
-            self.units[i].y = ny;
             return;
         }
-        if city.owner == faction {
+        if city_owner == faction {
             self.units[i].idle = !self.units[i].patrolling;
             return;
         }
         self.siege(i, target);
+    }
+
+    /// Moves unit `i` one step toward world point `(tx, ty)` by following a
+    /// region-to-region path instead of a straight line. Returns the remaining
+    /// straight-line distance to the final destination so callers can detect
+    /// arrival. Ships (on water) ignore pathing and sail straight, since the
+    /// region graph only covers land.
+    fn advance_along_path(&mut self, i: usize, maps: &Maps, tx: f32, ty: f32, spd: f32) -> f32 {
+        let x = self.units[i].x;
+        let y = self.units[i].y;
+        let final_d = dist(x, y, tx, ty);
+        // Sailing or very close: head straight for the destination.
+        if self.units[i].ship || final_d <= spd * 1.5 {
+            let (nx, ny, _) = step_toward(x, y, tx, ty, spd);
+            self.units[i].x = nx;
+            self.units[i].y = ny;
+            return dist(nx, ny, tx, ty);
+        }
+        let here = maps.region_at(x, y);
+        let goal = maps.region_at(tx, ty);
+        // (Re)compute the plot path when the destination region changes or the
+        // cached path is exhausted. If the goal is unreachable overland (e.g.
+        // across water) the path stays empty and we fall back to straight-line.
+        if goal >= 0 && (self.units[i].path_goal != goal || self.units[i].path.is_empty()) {
+            self.units[i].path = maps.region_path(here, goal);
+            self.units[i].path_goal = goal;
+        }
+        // Drop any leading waypoints we've already reached (including the one
+        // we're currently standing in) so we always aim at the NEXT plot.
+        while let Some(&next) = self.units[i].path.first() {
+            if next == here {
+                self.units[i].path.remove(0);
+            } else {
+                break;
+            }
+        }
+        // Aim at the next region's centroid, or the final destination if the
+        // path is empty (same region, adjacent, or no overland route).
+        let (wx, wy) = match self.units[i].path.first() {
+            Some(&next) => maps.region_centroid_world(next).unwrap_or((tx, ty)),
+            None => (tx, ty),
+        };
+        let (nx, ny, _) = step_toward(x, y, wx, wy, spd);
+        self.units[i].x = nx;
+        self.units[i].y = ny;
+        dist(nx, ny, tx, ty)
+    }
+
+    /// Patrol order: march to the target city, then on arrival pick a different
+    /// friendly city to march to, cycling the garrison through the nation's
+    /// settlements. Falls back to idling at home if the nation has one city.
+    fn step_patrol(&mut self, i: usize, maps: &Maps, game_speed: f32) {
+        let faction = self.units[i].faction.clone();
+        let target = self.units[i].target;
+        let x = self.units[i].x;
+        let y = self.units[i].y;
+        // If an enemy settlement is now in reach, switch to attacking it.
+        let range = if is_native(&faction) { NATIVE_MAX_RANGE } else { UNIT_MAX_RANGE };
+        if let Some(enemy) = self
+            .cities
+            .iter()
+            .filter(|c| c.owner != faction && !self.at_peace(&faction, &c.owner) && dist(x, y, c.x, c.y) <= range)
+            .min_by(|a, b| dist(a.x, a.y, x, y).total_cmp(&dist(b.x, b.y, x, y)))
+            .map(|c| c.id)
+        {
+            self.units[i].behavior = "Attack".into();
+            self.units[i].target = enemy;
+            self.units[i].path.clear();
+            self.units[i].path_goal = -1;
+            self.units[i].idle = false;
+            return;
+        }
+        let Some((tx, ty)) = self.cities.iter().find(|c| c.id == target && c.owner == faction).map(|c| (c.x, c.y)) else {
+            // Target lost or no longer ours: pick a new friendly city.
+            self.repoint_patrol(i, x, y);
+            return;
+        };
+        let spd = self.unit_speed(i, maps) * game_speed;
+        let d = self.advance_along_path(i, maps, tx, ty, spd);
+        self.units[i].idle = false;
+        if d <= 6.0 {
+            // Reached this city; head to the next one.
+            self.repoint_patrol(i, x, y);
+        }
+    }
+
+    /// Chooses the next patrol destination: a friendly city other than the
+    /// current one, preferring nearer cities so patrols sweep local territory.
+    fn repoint_patrol(&mut self, i: usize, x: f32, y: f32) {
+        let faction = self.units[i].faction.clone();
+        let cur = self.units[i].target;
+        let mut options: Vec<(u32, f32)> = self
+            .cities
+            .iter()
+            .filter(|c| c.owner == faction && c.id != cur)
+            .map(|c| (c.id, dist(x, y, c.x, c.y)))
+            .collect();
+        if options.is_empty() {
+            // Only one city: sit tight there.
+            self.units[i].idle = true;
+            return;
+        }
+        options.sort_by(|a, b| a.1.total_cmp(&b.1));
+        // Pick randomly among the nearest few so patrols vary their routes.
+        let pick = &options[rand::thread_rng().gen_range(0..options.len().min(3))];
+        self.units[i].target = pick.0;
+        self.units[i].path.clear();
+        self.units[i].path_goal = -1;
+        self.units[i].idle = false;
+    }
+
+    /// Border-guard order: hold a frontier region. The unit anchors on a border
+    /// region's centroid and stays within `GUARD_RADIUS` of it; if an enemy
+    /// unit or settlement enters that circle it moves to intercept, then
+    /// returns to its post. If the anchored region stops being a frontier, it
+    /// re-anchors on another border region.
+    fn step_guard(&mut self, i: usize, maps: &Maps, game_speed: f32) {
+        const GUARD_RADIUS: f32 = 36.0 * COORD_SCALE;
+        let faction = self.units[i].faction.clone();
+        let x = self.units[i].x;
+        let y = self.units[i].y;
+
+        // Ensure we have a valid frontier anchor.
+        let need_anchor = match (self.units[i].guard_region, self.units[i].guard_anchor) {
+            (r, Some(_)) if r >= 0 => self.border_region_from(r, &faction, maps).is_none(),
+            _ => true,
+        };
+        if need_anchor {
+            let home = self.nearest_city(&faction, x, y).unwrap_or((x, y));
+            let (region, pt) = self.guard_anchor_for(&faction, maps, home.0, home.1);
+            self.units[i].guard_region = region;
+            self.units[i].guard_anchor = Some(pt);
+        }
+        let (ax, ay) = self.units[i].guard_anchor.unwrap_or((x, y));
+
+        // Intercept any hostile unit or settlement within the guarded circle.
+        let intercept = self.nearest_threat(&faction, ax, ay, GUARD_RADIUS);
+        let (tx, ty) = intercept.unwrap_or((ax, ay));
+        let spd = self.unit_speed(i, maps) * game_speed;
+        let d = self.advance_along_path(i, maps, tx, ty, spd);
+        // Standing at the post counts as idle (plays the idle sprite); moving to
+        // intercept or returning does not.
+        self.units[i].idle = intercept.is_none() && d <= 8.0;
+    }
+
+    /// Nearest hostile unit or enemy settlement within `radius` of `(cx, cy)`,
+    /// as a world point to move toward. Used by border guards to intercept.
+    fn nearest_threat(&self, faction: &str, cx: f32, cy: f32, radius: f32) -> Option<(f32, f32)> {
+        let mut best: Option<((f32, f32), f32)> = None;
+        let mut consider = |px: f32, py: f32| {
+            let d = dist(cx, cy, px, py);
+            if d <= radius && best.as_ref().map(|(_, bd)| d < *bd).unwrap_or(true) {
+                best = Some(((px, py), d));
+            }
+        };
+        for u in &self.units {
+            if u.alive && u.faction != faction && !self.at_peace(faction, &u.faction) {
+                consider(u.x, u.y);
+            }
+        }
+        for c in &self.cities {
+            if c.owner != faction && !self.at_peace(faction, &c.owner) {
+                consider(c.x, c.y);
+            }
+        }
+        best.map(|(pt, _)| pt)
     }
 
     fn unit_speed(&self, i: usize, maps: &Maps) -> f32 {
@@ -1949,7 +2685,7 @@ impl Game {
                     let faction = self.merchants[i].faction.clone();
                     let here = self.merchants[i].dest;
                     let (x, y) = (self.merchants[i].x, self.merchants[i].y);
-                    if let Some(next) = self.cities.iter().find(|c| c.id != here && !self.at_war(&faction, &c.owner) && dist(x, y, c.x, c.y) <= MERCHANT_MAX_TRAVEL).map(|c| c.id) {
+                    if let Some(next) = self.pick_trade_dest(&faction, here, x, y) {
                         self.merchants[i].source = here;
                         self.merchants[i].dest = next;
                         self.merchants[i].status = 0;
@@ -1968,25 +2704,36 @@ impl Game {
                 continue;
             }
             let (x, y, tx, ty) = (self.settlers[i].x, self.settlers[i].y, self.settlers[i].tx, self.settlers[i].ty);
-            let (nx, ny, d) = step_toward(x, y, tx, ty, 0.16 * speed * move_mult(maps, x, y, false));
+            // Settlers can cross water: on sea they become a boat and travel at
+            // sea speed; on land they march at biome-modified speed.
+            let on_water = maps.is_water(x, y);
+            let spd = if on_water { 0.16 * speed * 2.0 } else { 0.16 * speed * move_mult(maps, x, y, false) };
+            let (nx, ny, d) = step_toward(x, y, tx, ty, spd);
             if d > 6.0 {
-                if !maps.is_water(nx, ny) {
-                    self.settlers[i].x = nx;
-                    self.settlers[i].y = ny;
-                }
+                // Move freely over both land and water now.
+                self.settlers[i].x = nx;
+                self.settlers[i].y = ny;
+                // Draw/report as a boat whenever on water and not atop a city.
+                self.settlers[i].ship =
+                    maps.is_water(nx, ny) && !self.cities.iter().any(|c| dist(c.x, c.y, nx, ny) < 10.0);
                 continue;
             }
             let faction = self.settlers[i].faction.clone();
             let native = self.settlers[i].native;
             let id = self.next_id;
             self.next_id += 1;
+            // Stamp a fresh settle order so this settlement outranks any earlier
+            // claim in the same region (most recent settler owns the region).
+            self.settle_order += 1;
+            let order = self.settle_order;
+            let region = maps.region_at(tx, ty);
             self.cities.push(City {
                 id,
                 name: if native { format!("{faction} Camp") } else { format!("{faction} Fort") },
                 x: tx,
                 y: ty,
                 owner: faction.clone(),
-                sovereign: faction,
+                sovereign: faction.clone(),
                 troops: if native { 30 } else { 40 },
                 tier: 0,
                 is_capital: false,
@@ -2001,15 +2748,36 @@ impl Game {
                 regen_cooldown: 0,
                 population: if native { 150 } else { 200 },
                 pop_acc: 0.0,
-                region: maps.region_at(tx, ty),
+                region,
+                ethnicity: Vec::new(),
+                religion: Vec::new(),
+                aristocracy: if native { 0.0 } else { 0.06 },
+                founded_order: order,
+                founded_year: self.year,
+                builder: faction.clone(),
             });
+            // Seed the new settlement with its founder's own people and faith.
+            if let Some(c) = self.cities.last_mut() {
+                let owner = c.owner.clone();
+                if is_native(&owner) {
+                    c.ethnicity = vec![("indigenous".to_string(), 1.0)];
+                    c.religion = vec![("animism".to_string(), 1.0)];
+                } else {
+                    c.ethnicity = vec![
+                        (owner_ethnicity_key(&owner).to_string(), 0.9),
+                        ("indigenous".to_string(), 0.1),
+                    ];
+                    c.religion = vec![(owner_religion_key(&owner).to_string(), 1.0)];
+                }
+            }
             self.settlers[i].alive = false;
             self.claims_dirty = true;
-            self.news(format!("A new settlement is founded."));
+            self.news(format!("{faction} settles territory #{region}!"));
         }
     }
 }
 
+#[allow(dead_code)]
 fn rekey_map<V>(map: HashMap<Pair, V>, remap: &HashMap<Pair, Pair>) -> HashMap<Pair, V> {
     map.into_iter()
         .map(|(key, value)| (remap.get(&key).copied().unwrap_or(key), value))
@@ -2065,9 +2833,11 @@ fn formation_cost(faction: &str, formation: &str) -> Vec<(&'static str, i32)> {
 
 fn regiment_name(faction: &str) -> String {
     let names: &[&str] = match faction {
-        "France" => &["Picardie", "Navarre", "La Marine", "Béarn", "Soissonnais", "Auvergne"],
+        "France" | "Louisiana" | "Saint-Domingue" => &["Picardie", "Navarre", "La Marine", "Béarn", "Soissonnais", "Auvergne"],
         "Great Britain" => &["Coldstream", "Royal Scots", "The Buffs", "King's Own", "East Essex"],
-        "Spain" => &["León", "Granada", "Sevilla", "Aragón", "Galicia"],
+        "Spain" | "New Granada" | "Peru" | "Rio de la Plata" | "New Spain" => &["León", "Granada", "Sevilla", "Aragón", "Galicia"],
+        "Portugal" => &["Lagos", "Lippe", "Cascais", "Peniche", "Chaves"],
+        "Netherlands" => &["Oranje", "Holland", "Zeeland", "Gelderland", "Friesland"],
         "Russia" => &["Siberian", "Moscow", "Azov", "Kiev", "Ingermanland"],
         "United States" => &["Continental", "Maryland", "New York", "Light Infantry"],
         "Mexico" => &["Supremos", "Allende", "Hidalgo", "Morelos"],
@@ -2078,22 +2848,41 @@ fn regiment_name(faction: &str) -> String {
     format!("{} {}", rng.gen_range(1..80), names[rng.gen_range(0..names.len())])
 }
 
-fn settle_spot(maps: &Maps, x: f32, y: f32, cities: &[City]) -> (f32, f32) {
+/// Pick a target for a settler: a land spot in a nearby region the faction
+/// does NOT already own, so settling claims new territory. Returns None if no
+/// suitable unowned region is found nearby (the settler is then skipped).
+fn settle_spot(
+    maps: &Maps,
+    x: f32,
+    y: f32,
+    cities: &[City],
+    owned: &std::collections::HashSet<i32>,
+) -> Option<(f32, f32)> {
     let mut rng = rand::thread_rng();
-    for _ in 0..24 {
+    let mut fallback: Option<(f32, f32)> = None;
+    for _ in 0..48 {
         let ang = rng.gen_range(0.0..std::f32::consts::TAU);
-        let rad = rng.gen_range(70.0..180.0);
+        let rad = rng.gen_range(70.0..260.0);
         let tx = x + ang.cos() * rad;
         let ty = y + ang.sin() * rad;
         if maps.is_water(tx, ty) {
             continue;
         }
-        if cities.iter().any(|c| dist(c.x, c.y, tx, ty) < 40.0) {
+        let region = maps.region_at(tx, ty);
+        if region < 0 || owned.contains(&region) {
             continue;
         }
-        return (tx, ty);
+        // Don't drop a new settlement right on top of an existing one.
+        if cities.iter().any(|c| dist(c.x, c.y, tx, ty) < 36.0) {
+            // Still a valid unowned region — remember it as a loose fallback.
+            if fallback.is_none() {
+                fallback = Some((tx, ty));
+            }
+            continue;
+        }
+        return Some((tx, ty));
     }
-    (x + 40.0, y)
+    fallback
 }
 
 trait ChooseRand<T> {

@@ -4,12 +4,6 @@ A pygame grand strategy simulation of colonial and nineteenth-century America. T
 
 The window title is **Colonial Simulator**. The Python game starts from `index.py`. A Rust port of the same simulation lives in this folder and starts with Cargo.
 
-
-![](docs/Screenshot01.png)
-
-![](docs/Screenshot02.png)
-
-
 ## Rust port
 
 The Rust version keeps the Python sources. It loads the same `images/` map, collision mask, climates, and territory file. Install [Rust](https://rustup.rs/) if `cargo` is not already on your `PATH`. On macOS and Linux, a new terminal needs the Cargo environment:
@@ -23,6 +17,44 @@ cargo run --release
 The first release build compiles the renderer and takes a few minutes. Later launches are much faster. The game opens fullscreen. Press F11 to leave fullscreen. Escape pauses. Number keys `1` through `4` set the speed (`4` is the fastest). `0` or Space pauses the clock. Drag the map with the right mouse button, or with the left button when the click misses a city. The wheel zooms.
 
 The Rust port runs the calendar, cities, economy, armies, merchants, settlers, wars, treaties, alliances, disasters, pirates, and the historical events for each scenario. It uses the same paintings, flags, building art, and sprite sheets as the Python game. The laws screen, governor portraits, and separate battle viewer are left out. Armies move in straight lines, and they sail when the pixel under them is water.
+
+### Compile and run on Windows
+
+Install [Rust](https://rustup.rs/) with `rustup`, then open a new terminal so `cargo` is on your `PATH` and confirm it:
+
+```powershell
+cargo --version
+```
+
+Rust on Windows uses the **MSVC** toolchain by default, which links with `link.exe` from the Visual Studio C++ tools. This is the recommended path. Install the [Build Tools for Visual Studio](https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022) and select the **Desktop development with C++** workload (a full Visual Studio install with that workload also works). Installing just VS Code is not enough.
+
+```powershell
+winget install --id Microsoft.VisualStudio.2022.BuildTools --override "--quiet --wait --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
+```
+
+The C++ linker is only on your `PATH` inside a Visual Studio developer terminal. Open **x64 Native Tools Command Prompt for VS** from the Start menu, or run the game from a developer-enabled PowerShell. Build and run from the project folder (the directory that holds `Cargo.toml`):
+
+```powershell
+cargo run --release
+```
+
+If a plain terminal stops with `linker 'link.exe' not found`, the shell is not a developer terminal. Load the Visual Studio environment first, then build. Adjust the path to match your edition (`Community`, `Professional`, `BuildTools`) and version folder:
+
+```powershell
+Import-Module "C:\Program Files\Microsoft Visual Studio\18\Community\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
+Enter-VsDevShell -VsInstallPath "C:\Program Files\Microsoft Visual Studio\18\Community" -SkipAutomaticLocation -DevCmdArguments "-arch=x64 -host_arch=x64"
+cargo run --release
+```
+
+Prefer not to install the Visual Studio C++ tools? Use the GNU toolchain instead. It does not use `link.exe`, but it needs an external MinGW-w64 GCC on your `PATH` (the bundled linker alone fails with errors like `cannot find -limm32`). Install MinGW-w64 (for example through [MSYS2](https://www.msys2.org/): `pacman -S mingw-w64-x86_64-gcc`, then add `C:\msys64\mingw64\bin` to `PATH`), then switch toolchains:
+
+```powershell
+rustup toolchain install stable-x86_64-pc-windows-gnu
+rustup default stable-x86_64-pc-windows-gnu
+cargo run --release
+```
+
+Run the game from the project folder so it can find `images/`. The first release build compiles the renderer and takes a few minutes; later launches are much faster. The game opens fullscreen. Press F11 to leave fullscreen. Escape pauses. Number keys `1` through `4` set the speed (`4` is the fastest). `0` or Space pauses the clock. Drag the map with the right mouse button, or with the left button when the click misses a city. The wheel zooms. The built program is written to `target\release\colonial_simulator.exe`.
 
 ### Windows executable
 

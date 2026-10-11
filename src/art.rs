@@ -1,6 +1,7 @@
 //! Sprites, flags, buildings, and paintings from `images/`, laid out the same
 //! way `sprites.py` and `index.py` slice them.
 
+use crate::config::scaled_font;
 use macroquad::prelude::*;
 use ::rand::seq::SliceRandom;
 use std::collections::HashMap;
@@ -90,6 +91,11 @@ pub struct Art {
     pub mountain: Option<Texture2D>,
     pub plantation: Option<Texture2D>,
     pub faces: HashMap<String, Texture2D>,
+    pub ethnicities: HashMap<String, Texture2D>,
+    pub rulers: HashMap<String, Texture2D>,
+    pub religions: HashMap<String, Texture2D>,
+    pub governments: HashMap<String, Texture2D>,
+    pub portrait_bg: Option<Texture2D>,
 }
 
 impl Art {
@@ -156,9 +162,50 @@ impl Art {
                 faces.insert(name.to_string(), tex);
             }
         }
+        let mut ethnicities = HashMap::new();
+        for name in [
+            "africans", "americans", "british", "danes", "french", "indigenous", "latinamericans", "russians",
+            "spanish", "portugese", "dutch",
+        ] {
+            let file = format!("ethnicities/common{name}.png");
+            if let Some(tex) = load_tex(&images.join(&file), FilterMode::Linear) {
+                ethnicities.insert(name.to_string(), tex);
+            }
+        }
+        // Leader portraits, keyed by file stem (e.g. "georgeiii"). Loaded from
+        // images/rulers/. Not included in the bundled build.
+        let mut rulers = HashMap::new();
+        if let Ok(entries) = std::fs::read_dir(images.join("rulers")) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                let stem = path.file_stem().and_then(|s| s.to_str()).map(|s| s.to_lowercase());
+                let Some(stem) = stem else { continue };
+                if let Some(tex) = load_tex(&path, FilterMode::Linear) {
+                    rulers.insert(stem, tex);
+                }
+            }
+        }
+        let mut religions = HashMap::new();
+        for name in ["animism", "catholic", "mesoamerican", "orthodox", "protestant", "voodoo"] {
+            let file = format!("religions/{name}.png");
+            if let Some(tex) = load_tex(&images.join(&file), FilterMode::Linear) {
+                religions.insert(name.to_string(), tex);
+            }
+        }
+        let mut governments = HashMap::new();
+        for name in [
+            "colonialgovernment", "confederation", "constitutionalmonarchy", "militarygovernment", "monarchy",
+            "republic", "tribal",
+        ] {
+            let file = format!("governments/{name}.png");
+            if let Some(tex) = load_tex(&images.join(&file), FilterMode::Linear) {
+                governments.insert(name.to_string(), tex);
+            }
+        }
         let mountain = load_tex(&images.join("mountain.webp"), FilterMode::Nearest);
         let plantation = load_tex(&images.join("buildings/plantation.png"), FilterMode::Nearest);
-        Self { frame, news, scenarios, flags, buildings, farms, biomes, capitals, sheets, explosion, smoke, mountain, plantation, faces }
+        let portrait_bg = load_tex(&images.join("portraitbackground.png"), FilterMode::Linear);
+        Self { frame, news, scenarios, flags, buildings, farms, biomes, capitals, sheets, explosion, smoke, mountain, plantation, faces, ethnicities, rulers, religions, governments, portrait_bg }
     }
 
     pub fn marchers(&self) -> Vec<Marcher> {
@@ -183,8 +230,13 @@ impl Art {
 
     pub fn flag<'a>(&'a self, faction: &str, year: i32) -> Option<&'a Texture2D> {
         let key = match faction {
-            "Spain" if year >= 1785 => "Spain Kingdom",
-            "France" if year >= 1792 => "France Republic",
+            // Spanish colonial puppets fly the Spanish flag.
+            "Spain" | "New Granada" | "Peru" | "Rio de la Plata" | "New Spain" if year >= 1785 => "Spain Kingdom",
+            "New Granada" | "Peru" | "Rio de la Plata" | "New Spain" => "Spain",
+            "France" | "Louisiana" if year >= 1792 => "France Republic",
+            "Louisiana" => "France",
+            // Saint-Domingue flies its own colonial flag.
+            "Saint-Domingue" => "Saint-Domingue",
             other => other,
         };
         self.flags.get(key).or_else(|| self.flags.get(faction))
@@ -222,29 +274,29 @@ impl Art {
         self.sheets.get(key)
     }
 
-    /// Map icon. Matches `draw_city` in `index.py`.
-    pub fn map_building<'a>(&'a self, owner: &str, sovereign: &str, camp: bool, fort: bool, village: bool, tier: i32) -> Option<&'a Texture2D> {
-        let native_sov = crate::config::is_native(sovereign);
-        let native_owner = crate::config::is_native(owner);
-        let look = if native_sov && !native_owner { owner } else { sovereign };
+    /// Map icon. Matches `draw_city` in `index.py`. The architecture follows
+    /// the settlement's original `builder` nation, not its current owner, so a
+    /// conquered city keeps its founder's look (Quebec stays French, etc.).
+    pub fn map_building<'a>(&'a self, builder: &str, camp: bool, fort: bool, village: bool, tier: i32) -> Option<&'a Texture2D> {
+        let look = builder;
         let native = crate::config::is_native(look);
         let key = if camp || (native && village) || native {
             "camp"
         } else if fort {
             "fort"
-        } else if matches!(look, "Great Britain" | "United States" | "Texas" | "Confederate States" | "Canada" | "Rupert's Land") {
+        } else if matches!(look, "Great Britain" | "United States" | "Texas" | "Confederate States" | "Canada" | "Rupert's Land" | "Netherlands") {
             match tier {
                 3.. => "brit3",
                 2 => "brit2",
                 _ => "brit",
             }
-        } else if look == "France" {
+        } else if matches!(look, "France" | "Haiti" | "Louisiana" | "Saint-Domingue") {
             match tier {
                 3.. => "fren3",
                 2 => "fren2",
                 _ => "fren",
             }
-        } else if matches!(look, "Spain" | "Mexico") {
+        } else if matches!(look, "Spain" | "Portugal" | "Mexico" | "New Granada" | "Peru" | "Rio de la Plata" | "New Spain") {
             match tier {
                 3.. => "span3",
                 2 => "span2",
@@ -268,7 +320,14 @@ impl Art {
             WHITE,
             DrawTextureParams { dest_size: Some(vec2(rect.w, rect.h)), ..Default::default() },
         );
-        let width = measure_text(label, None, font as u16, 1.0).width;
+        // Scale the label but shrink it to fit the button if needed.
+        let mut font = scaled_font(font);
+        let mut width = measure_text(label, None, font as u16, 1.0).width;
+        let max_w = rect.w - 12.0;
+        if width > max_w && width > 0.0 {
+            font *= max_w / width;
+            width = measure_text(label, None, font as u16, 1.0).width;
+        }
         draw_text(label, rect.x + (rect.w - width) * 0.5, rect.y + rect.h * 0.5 + font * 0.32, font, WHITE);
     }
 }
@@ -280,6 +339,7 @@ pub fn gold_panel(x: f32, y: f32, w: f32, h: f32, alpha: u8) {
 }
 
 pub fn outlined(text: &str, x: f32, top: f32, size: f32, color: Color) {
+    let size = scaled_font(size);
     let dims = measure_text(text, None, size as u16, 1.0);
     let y = top + dims.offset_y;
     let dark = color.r + color.g + color.b < 100.0 / 255.0;
@@ -292,7 +352,9 @@ pub fn outlined(text: &str, x: f32, top: f32, size: f32, color: Color) {
 
 /// `cy` is the vertical center of the text, matching pygame's center anchor.
 pub fn outlined_center(text: &str, cx: f32, cy: f32, size: f32, color: Color) {
-    let dims = measure_text(text, None, size as u16, 1.0);
+    // Measure at the scaled size so centering matches the scaled draw; pass the
+    // base size to `outlined`, which applies the scale once when drawing.
+    let dims = measure_text(text, None, scaled_font(size) as u16, 1.0);
     outlined(text, cx - dims.width * 0.5, cy - dims.height * 0.5, size, color);
 }
 
@@ -337,16 +399,19 @@ pub fn water_clip(dx: f32, dy: f32) -> &'static str {
 
 pub fn codex_nations() -> &'static [&'static str] {
     &[
-        "Great Britain", "France", "Spain", "Russia", "Denmark", "United States", "Confederate States",
-        "Mexico", "Haiti", "Texas", "Canada", "Iroquois", "Wabanaki", "Comanche", "Cree", "Dakota",
+        "Great Britain", "France", "Louisiana", "Saint-Domingue", "Spain", "Portugal", "Netherlands", "New Granada", "Peru", "Rio de la Plata", "New Spain", "Russia", "Denmark", "United States", "Confederate States",
+        "Mexico", "Haiti", "Texas", "Canada", "Iroquois", "Wabanaki", "Cherokee", "Comanche", "Cree", "Dakota",
     ]
 }
 
 pub fn codex_flag(nation: &str) -> &'static str {
     match nation {
         "Great Britain" => "Great Britain",
-        "France" => "France",
-        "Spain" => "Spain",
+        "France" | "Louisiana" => "France",
+        "Saint-Domingue" => "Saint-Domingue",
+        "Spain" | "New Granada" | "Peru" | "Rio de la Plata" | "New Spain" => "Spain",
+        "Portugal" => "Portugal",
+        "Netherlands" => "Netherlands",
         "Russia" => "Russia",
         "Denmark" => "Denmark",
         "United States" => "United States",
@@ -357,6 +422,7 @@ pub fn codex_flag(nation: &str) -> &'static str {
         "Canada" => "Canada",
         "Iroquois" => "Iroquois",
         "Wabanaki" => "Wabanaki",
+        "Cherokee" => "Cherokee",
         "Comanche" => "Comanche",
         "Cree" => "Cree",
         "Dakota" => "Dakota",
@@ -366,18 +432,28 @@ pub fn codex_flag(nation: &str) -> &'static str {
 
 pub fn codex_variants(nation: &str) -> &'static [CodexVariant] {
     match nation {
-        "Great Britain" => &[
+        // Rupert's Land, the Hudson's Bay Company charter, fields British
+        // regulars, so it shares Britain's codex entry.
+        "Great Britain" | "Rupert's Land" => &[
             CodexVariant { label: "Standard", dates: "1754-1800", infantry: Some("britinf"), cavalry: Some("britishcav") },
             CodexVariant { label: "1800s", dates: "1800+", infantry: Some("britinf1800"), cavalry: Some("britcav1800") },
         ],
-        "France" => &[
+        "France" | "Louisiana" | "Saint-Domingue" => &[
             CodexVariant { label: "Monarchy", dates: "1754-1792", infantry: Some("frenchinf"), cavalry: Some("frenchcav") },
             CodexVariant { label: "Republic", dates: "1792-1800", infantry: Some("frenchinfrv"), cavalry: Some("frenchcavrv") },
             CodexVariant { label: "1800s", dates: "1800+", infantry: Some("frenchinf1800"), cavalry: Some("frenchcav1800") },
         ],
-        "Spain" => &[
+        "Spain" | "New Granada" | "Peru" | "Rio de la Plata" | "New Spain" => &[
             CodexVariant { label: "Standard", dates: "1754-1800", infantry: Some("spaininf"), cavalry: Some("spanishcav") },
             CodexVariant { label: "1800s", dates: "1800+", infantry: Some("spaininf1800"), cavalry: Some("spaincav1800") },
+        ],
+        "Portugal" => &[
+            CodexVariant { label: "Standard", dates: "1754-1800", infantry: Some("portinf"), cavalry: Some("portcav") },
+            CodexVariant { label: "1800s", dates: "1800+", infantry: Some("portinf1800"), cavalry: Some("portcav1800") },
+        ],
+        "Netherlands" => &[
+            CodexVariant { label: "Standard", dates: "1754-1800", infantry: Some("dutchinf"), cavalry: Some("dutchcav") },
+            CodexVariant { label: "1800s", dates: "1800+", infantry: Some("dutchinf1800"), cavalry: Some("dutchcav1800") },
         ],
         "Russia" => &[
             CodexVariant { label: "Standard", dates: "1754-1800", infantry: Some("rusinf"), cavalry: Some("russiancav") },
@@ -396,7 +472,7 @@ pub fn codex_variants(nation: &str) -> &'static [CodexVariant] {
         "Haiti" => &[CodexVariant { label: "Standard", dates: "1804+", infantry: Some("haitinf"), cavalry: Some("haiticav") }],
         "Texas" => &[CodexVariant { label: "Standard", dates: "1836+", infantry: Some("texinf"), cavalry: Some("texcav") }],
         "Confederate States" => &[CodexVariant { label: "Standard", dates: "1861+", infantry: Some("confedinf"), cavalry: Some("confedcav") }],
-        "Iroquois" | "Wabanaki" => &[CodexVariant { label: "Warrior", dates: "All eras", infantry: Some("gunbearer"), cavalry: None }],
+        "Iroquois" | "Wabanaki" | "Cherokee" => &[CodexVariant { label: "Warrior", dates: "All eras", infantry: Some("gunbearer"), cavalry: None }],
         "Comanche" => &[CodexVariant { label: "Warrior", dates: "All eras", infantry: Some("gunbearer"), cavalry: Some("horseman") }],
         "Cree" => &[CodexVariant { label: "Bowman", dates: "All eras", infantry: Some("bowman"), cavalry: None }],
         "Dakota" => &[CodexVariant { label: "Bowman", dates: "All eras", infantry: Some("bowman"), cavalry: Some("horseman") }],
@@ -407,7 +483,7 @@ pub fn codex_variants(nation: &str) -> &'static [CodexVariant] {
 
 pub fn alt_flags(nation: &str) -> &'static [(&'static str, &'static str)] {
     match nation {
-        "Spain" => &[("Spain", "Bourbon (pre-1785)"), ("Spain Kingdom", "Kingdom (1785+)")],
+        "Spain" | "New Granada" | "Peru" | "Rio de la Plata" | "New Spain" => &[("Spain", "Bourbon (pre-1785)"), ("Spain Kingdom", "Kingdom (1785+)")],
         "France" => &[("France", "Monarchy"), ("France Republic", "Republic (1792+)")],
         "United States" => &[("Continental", "Continental"), ("United States", "Stars & Stripes")],
         _ => &[],
@@ -419,21 +495,28 @@ fn infantry_key(faction: &str, year: i32) -> &'static str {
         "United States" if year >= 1850 => "unioninf",
         "United States" if year >= 1800 => "americaninf1800",
         "United States" => "americaninf",
-        "France" if (1792..1800).contains(&year) => "frenchinfrv",
-        "France" if year >= 1800 => "frenchinf1800",
-        "France" => "frenchinf",
-        "Great Britain" if year >= 1800 => "britinf1800",
-        "Great Britain" => "britinf",
-        "Spain" if year >= 1800 => "spaininf1800",
-        "Spain" => "spaininf",
+        "France" | "Louisiana" | "Saint-Domingue" if (1792..1800).contains(&year) => "frenchinfrv",
+        "France" | "Louisiana" | "Saint-Domingue" if year >= 1800 => "frenchinf1800",
+        "France" | "Louisiana" | "Saint-Domingue" => "frenchinf",
+        // Rupert's Land is a British chartered territory: it fields British
+        // troops right up to Canadian Confederation (when its men become
+        // Canada's). Canada proper keeps its own post-1867 look.
+        "Great Britain" | "Rupert's Land" if year >= 1800 => "britinf1800",
+        "Great Britain" | "Rupert's Land" => "britinf",
+        "Spain" | "New Granada" | "Peru" | "Rio de la Plata" | "New Spain" if year >= 1800 => "spaininf1800",
+        "Spain" | "New Granada" | "Peru" | "Rio de la Plata" | "New Spain" => "spaininf",
+        "Portugal" if year >= 1800 => "portinf1800",
+        "Portugal" => "portinf",
+        "Netherlands" if year >= 1800 => "dutchinf1800",
+        "Netherlands" => "dutchinf",
         "Russia" if year >= 1800 => "rusinf1800",
         "Russia" => "rusinf",
         "Denmark" if year >= 1800 => "daneinf1800",
         "Denmark" => "daneinf",
         "Pirates" => "pirateinf",
-        "Iroquois" | "Wabanaki" | "Comanche" => "gunbearer",
+        "Iroquois" | "Wabanaki" | "Cherokee" | "Comanche" => "gunbearer",
         "Cree" | "Dakota" => "bowman",
-        "Rupert's Land" | "Canada" => "caninf",
+        "Canada" => "caninf",
         "Mexico" => "mexinf",
         "Haiti" => "haitinf",
         "Texas" => "texinf",
@@ -447,19 +530,23 @@ fn cavalry_key(faction: &str, year: i32) -> &'static str {
         "United States" if year >= 1850 => "unioncav",
         "United States" if year >= 1800 => "americancav1800",
         "United States" => "americancav",
-        "France" if (1792..1800).contains(&year) => "frenchcavrv",
-        "France" if year >= 1800 => "frenchcav1800",
-        "France" => "frenchcav",
-        "Great Britain" if year >= 1800 => "britcav1800",
-        "Great Britain" => "britishcav",
-        "Spain" if year >= 1800 => "spaincav1800",
-        "Spain" => "spanishcav",
+        "France" | "Louisiana" | "Saint-Domingue" if (1792..1800).contains(&year) => "frenchcavrv",
+        "France" | "Louisiana" | "Saint-Domingue" if year >= 1800 => "frenchcav1800",
+        "France" | "Louisiana" | "Saint-Domingue" => "frenchcav",
+        "Great Britain" | "Rupert's Land" if year >= 1800 => "britcav1800",
+        "Great Britain" | "Rupert's Land" => "britishcav",
+        "Spain" | "New Granada" | "Peru" | "Rio de la Plata" | "New Spain" if year >= 1800 => "spaincav1800",
+        "Spain" | "New Granada" | "Peru" | "Rio de la Plata" | "New Spain" => "spanishcav",
+        "Portugal" if year >= 1800 => "portcav1800",
+        "Portugal" => "portcav",
+        "Netherlands" if year >= 1800 => "dutchcav1800",
+        "Netherlands" => "dutchcav",
         "Russia" if year >= 1800 => "ruscav1800",
         "Russia" => "russiancav",
         "Denmark" if year >= 1800 => "danecav1800",
         "Denmark" => "danecav",
         "Comanche" | "Dakota" => "horseman",
-        "Rupert's Land" | "Canada" => "cancav",
+        "Canada" => "cancav",
         "Mexico" => "mexcav",
         "Haiti" => "haiticav",
         "Texas" => "texcav",
@@ -493,6 +580,7 @@ fn load_sheets(images: &Path) -> HashMap<String, Anim> {
         "britinf", "britinf1800", "frenchinf", "frenchinfrv", "frenchinf1800", "rusinf", "rusinf1800",
         "spaininf", "spaininf1800", "americaninf", "americaninf1800", "unioninf", "pirateinf", "daneinf",
         "daneinf1800", "gunbearer", "bowman", "caninf", "mexinf", "haitinf", "texinf", "confedinf",
+        "portinf", "portinf1800", "dutchinf", "dutchinf1800",
     ];
     for name in inf {
         let path = images.join(format!("sprites/{name}.png"));
@@ -504,6 +592,7 @@ fn load_sheets(images: &Path) -> HashMap<String, Anim> {
         "britishcav", "britcav1800", "frenchcav", "frenchcavrv", "frenchcav1800", "russiancav", "ruscav1800",
         "spanishcav", "spaincav1800", "americancav", "americancav1800", "unioncav", "danecav", "danecav1800",
         "horseman", "cancav", "mexcav", "haiticav", "texcav", "confedcav",
+        "portcav", "portcav1800", "dutchcav", "dutchcav1800",
     ];
     for name in cav {
         let path = images.join(format!("sprites/{name}.png"));
@@ -519,6 +608,12 @@ fn load_sheets(images: &Path) -> HashMap<String, Anim> {
     }
     for name in ["merchant", "natmerchant", "blackmerchant"] {
         if let Some(anim) = load_merchant(&images.join(format!("sprites/{name}.png"))) {
+            sheets.insert(name.to_string(), anim);
+        }
+    }
+    // Governor and chief portrait sprites (idle/walk character layout).
+    for name in ["govenor1", "govenor2", "govenor3", "govenor4", "blackgovenor", "natchief1", "natchief2"] {
+        if let Some(anim) = load_infantry(&images.join(format!("sprites/{name}.png"))) {
             sheets.insert(name.to_string(), anim);
         }
     }
@@ -697,11 +792,14 @@ const FLAG_FILES: &[(&str, &str)] = &[
     ("France Republic", "flags/francerp.webp"),
     ("Spain", "flags/spain.png"),
     ("Spain Kingdom", "flags/kingdomofspain.webp"),
+    ("Portugal", "flags/portugal.webp"),
+    ("Netherlands", "flags/netherlands.webp"),
     ("Great Britain", "flags/britian.png"),
     ("Russia", "flags/russia.webp"),
     ("Denmark", "flags/denmark.webp"),
     ("Iroquois", "flags/iroquois.png"),
     ("Wabanaki", "flags/wabanaki.png"),
+    ("Cherokee", "flags/cherokee.png"),
     ("Comanche", "flags/comanche.png"),
     ("Cree", "flags/cree.webp"),
     ("Dakota", "flags/dakota.png"),
@@ -710,6 +808,7 @@ const FLAG_FILES: &[(&str, &str)] = &[
     ("United States", "flags/usa.webp"),
     ("Mexico", "flags/mexico.png"),
     ("Haiti", "flags/haiti.png"),
+    ("Saint-Domingue", "flags/saintdomingue.webp"),
     ("Texas", "flags/texas.webp"),
     ("Confederate States", "flags/confederatestates.png"),
     ("Canada", "flags/canada.png"),
@@ -732,9 +831,9 @@ const BUILDING_FILES: &[(&str, &str)] = &[
 ];
 
 const FARM_GROUPS: &[(&str, &[&str])] = &[
-    ("brit", &["Great Britain", "United States", "Texas", "Confederate States"]),
-    ("fren", &["France", "Haiti"]),
-    ("span", &["Spain", "Mexico"]),
+    ("brit", &["Great Britain", "United States", "Texas", "Confederate States", "Netherlands"]),
+    ("fren", &["France", "Haiti", "Louisiana", "Saint-Domingue"]),
+    ("span", &["Spain", "Portugal", "Mexico", "New Granada", "Peru", "Rio de la Plata", "New Spain"]),
     ("rus", &["Russia"]),
     ("dan", &["Denmark"]),
 ];
@@ -747,8 +846,8 @@ const BIOME_FILES: &[(&str, &[&str])] = &[
     ("temperate", &["biomes/temperate.png", "biomes/temperate2.jpg", "biomes/temperate3.webp"]),
     ("tropical", &["biomes/tropics.jpg", "biomes/tropics2.jpg", "biomes/tropics3.jpg"]),
     ("tundra", &["biomes/tundra.jpg", "biomes/tundra2.png", "biomes/tundra3.jpg"]),
-    ("mountains", &["biomes/grassland.jpg"]),
-    ("rainforest", &["biomes/tropics.jpg"]),
+    ("mountains", &["biomes/mountains.png", "biomes/mountains2.png", "biomes/mountains3.png"]),
+    ("rainforest", &["biomes/rainforest.png", "biomes/rainforest2.png", "biomes/rainforest3.png"]),
 ];
 
 const CAPITAL_FILES: &[(&str, &str)] = &[
@@ -769,6 +868,8 @@ const MARCH_GROUPS: &[(&str, &str, &str, &str, &str, &str)] = &[
     ("britinf", "britinf1800", "britishcav", "britcav1800", "Great Britain", "Great Britain"),
     ("frenchinf", "frenchinf1800", "frenchcav", "frenchcav1800", "France", "France Republic"),
     ("spaininf", "spaininf1800", "spanishcav", "spaincav1800", "Spain", "Spain"),
+    ("portinf", "portinf1800", "portcav", "portcav1800", "Portugal", "Portugal"),
+    ("dutchinf", "dutchinf1800", "dutchcav", "dutchcav1800", "Netherlands", "Netherlands"),
     ("rusinf", "rusinf1800", "russiancav", "ruscav1800", "Russia", "Russia"),
     ("daneinf", "daneinf1800", "danecav", "danecav1800", "Denmark", "Denmark"),
     ("americaninf", "americaninf1800", "americancav", "americancav1800", "United States", "United States"),

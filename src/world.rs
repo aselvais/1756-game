@@ -31,6 +31,10 @@ pub struct Maps {
     region_colors: Vec<[u8; 3]>,
     region_centroids: Vec<(i32, i32)>,
     region_edge: Vec<Vec<(u16, u16)>>,
+    /// For each region, the ids of regions it shares a land border with. Built
+    /// once at load from the region grid; used for plot-to-plot unit pathing
+    /// and for finding border regions.
+    region_neighbors: Vec<Vec<i32>>,
     /// Per native-map pixel: 0 ocean, 1 black border, 2 land interior.
     overlay_kind: Vec<u8>,
 }
@@ -68,6 +72,7 @@ impl Maps {
             region_colors: regions.colors,
             region_centroids: regions.centroids,
             region_edge: regions.edges,
+            region_neighbors: regions.neighbors,
             overlay_kind: regions.overlay_kind,
         })
     }
@@ -141,6 +146,56 @@ impl Maps {
             (gx as f32 + 0.5) / self.region_w as f32 * self.w as f32,
             (gy as f32 + 0.5) / self.region_h as f32 * self.h as f32,
         ))
+    }
+
+    /// Ids of regions bordering `rid` (shared land border, across the thin map
+    /// borders). Empty for an invalid id.
+    pub fn region_neighbors(&self, rid: i32) -> &[i32] {
+        if rid < 0 {
+            return &[];
+        }
+        self.region_neighbors.get(rid as usize).map(Vec::as_slice).unwrap_or(&[])
+    }
+
+    /// Breadth-first path of region ids from `start` to `goal`, stepping only
+    /// through adjacent regions. The returned path includes `goal` but not
+    /// `start`; it is empty if `start == goal` or no land route exists. Used to
+    /// move units plot-to-plot instead of in a straight line.
+    pub fn region_path(&self, start: i32, goal: i32) -> Vec<i32> {
+        if start < 0 || goal < 0 || start == goal {
+            return Vec::new();
+        }
+        let n = self.region_neighbors.len();
+        if start as usize >= n || goal as usize >= n {
+            return Vec::new();
+        }
+        let mut prev = vec![-2i32; n]; // -2 = unvisited, -1 = start (no parent)
+        prev[start as usize] = -1;
+        let mut queue = std::collections::VecDeque::new();
+        queue.push_back(start);
+        while let Some(cur) = queue.pop_front() {
+            if cur == goal {
+                break;
+            }
+            for &nb in &self.region_neighbors[cur as usize] {
+                if nb >= 0 && (nb as usize) < n && prev[nb as usize] == -2 {
+                    prev[nb as usize] = cur;
+                    queue.push_back(nb);
+                }
+            }
+        }
+        if prev[goal as usize] == -2 {
+            return Vec::new(); // unreachable overland (e.g. across an ocean)
+        }
+        // Walk parents back from goal to start, then reverse.
+        let mut path = Vec::new();
+        let mut cur = goal;
+        while cur != start && cur != -1 {
+            path.push(cur);
+            cur = prev[cur as usize];
+        }
+        path.reverse();
+        path
     }
 
     /// Land cells that touch a border, another region, or the grid edge.
@@ -265,6 +320,7 @@ struct Regions {
     colors: Vec<[u8; 3]>,
     centroids: Vec<(i32, i32)>,
     edges: Vec<Vec<(u16, u16)>>,
+    neighbors: Vec<Vec<i32>>,
     overlay_w: u32,
     overlay_h: u32,
     overlay_kind: Vec<u8>,
@@ -279,6 +335,7 @@ fn empty_regions() -> Regions {
         colors: Vec::new(),
         centroids: Vec::new(),
         edges: Vec::new(),
+        neighbors: Vec::new(),
         overlay_w: 0,
         overlay_h: 0,
         overlay_kind: Vec::new(),
@@ -301,11 +358,11 @@ fn load_regions(path: &Path) -> Regions {
     let raw = img.into_raw();
     let gw = REGION_GRID_W;
     let gh = (gw as f64 * MAP_H as f64 / MAP_W as f64) as u32;
-    let (ids, count, colors, centroids, edges) = detect_regions(&raw, sw, sh, gw, gh.max(1));
+    let (ids, count, colors, centroids, edges, neighbors) = detect_regions(&raw, sw, sh, gw, gh.max(1));
     let overlay_w = MAP_W;
     let overlay_h = MAP_H;
     let overlay_kind = classify_overlay(&raw, sw, sh, overlay_w, overlay_h);
-    Regions { w: gw, h: gh.max(1), ids, count, colors, centroids, edges, overlay_w, overlay_h, overlay_kind }
+    Regions { w: gw, h: gh.max(1), ids, count, colors, centroids, edges, neighbors, overlay_w, overlay_h, overlay_kind }
 }
 
 /// Pillow's NEAREST resize: sample the source pixel under the destination center.
@@ -331,7 +388,7 @@ fn detect_regions(
     sh: u32,
     gw: u32,
     gh: u32,
-) -> (Vec<i32>, i32, Vec<[u8; 3]>, Vec<(i32, i32)>, Vec<Vec<(u16, u16)>>) {
+) -> (Vec<i32>, i32, Vec<[u8; 3]>, Vec<(i32, i32)>, Vec<Vec<(u16, u16)>>, Vec<Vec<i32>>) {
     let xs: Vec<u32> = (0..gw).map(|x| nearest_index(x, gw, sw)).collect();
     let ys: Vec<u32> = (0..gh).map(|y| nearest_index(y, gh, sh)).collect();
     let n = (gw * gh) as usize;
@@ -352,8 +409,15 @@ fn detect_regions(
     let mut sum_y = vec![0u64; count as usize];
     let mut seen = vec![0u32; count as usize];
     let mut edges = vec![Vec::new(); count as usize];
+    // Adjacency as sorted-dedup sets, built as we scan edge cells.
+    let mut neighbor_sets: Vec<std::collections::BTreeSet<i32>> =
+        vec![std::collections::BTreeSet::new(); count as usize];
     let wi = gw as i32;
     let hi = gh as i32;
+    // Regions on the map are separated by thin black borders (id -1), so two
+    // neighboring territories rarely touch cell-to-cell. Scan a small window
+    // around each edge cell to find the region on the far side of the border.
+    const ADJ_RADIUS: i32 = 3;
     for y in 0..hi {
         let row = (y as u32 * gw) as usize;
         for x in 0..wi {
@@ -376,9 +440,24 @@ fn detect_regions(
             });
             if edge {
                 edges[slot].push((x as u16, y as u16));
+                // Look across the border for the nearest different region id.
+                for dy in -ADJ_RADIUS..=ADJ_RADIUS {
+                    for dx in -ADJ_RADIUS..=ADJ_RADIUS {
+                        let nx = x + dx;
+                        let ny = y + dy;
+                        if nx < 0 || ny < 0 || nx >= wi || ny >= hi {
+                            continue;
+                        }
+                        let other = ids[(ny as u32 * gw + nx as u32) as usize];
+                        if other >= 0 && other != id {
+                            neighbor_sets[slot].insert(other);
+                        }
+                    }
+                }
             }
         }
     }
+    let neighbors: Vec<Vec<i32>> = neighbor_sets.into_iter().map(|s| s.into_iter().collect()).collect();
     let colors = (0..count as usize)
         .map(|i| {
             let c = (seen[i] as u64).max(1);
@@ -391,7 +470,7 @@ fn detect_regions(
             ((sum_x[i] / c) as i32, (sum_y[i] / c) as i32)
         })
         .collect();
-    (ids, count, colors, centroids, edges)
+    (ids, count, colors, centroids, edges, neighbors)
 }
 
 fn label_land(land: &mut [bool], w: u32, h: u32) -> (Vec<i32>, i32) {

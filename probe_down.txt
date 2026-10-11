@@ -1,0 +1,8 @@
+﻿
+running 1 test
+MOBILE (228,284) -> region 48
+REGION 301 not on the Gulf Coast band.
+test sim::tests::probe_mobile_region ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 24.85s
+

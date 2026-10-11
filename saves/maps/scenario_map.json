@@ -1,0 +1,2245 @@
+{
+  "name": "Custom Scenario",
+  "regions": [
+    [
+      0,
+      "Russia"
+    ],
+    [
+      1,
+      "Russia"
+    ],
+    [
+      3,
+      "Russia"
+    ],
+    [
+      5,
+      "Russia"
+    ],
+    [
+      7,
+      "Russia"
+    ],
+    [
+      8,
+      "Russia"
+    ],
+    [
+      9,
+      "Denmark"
+    ],
+    [
+      10,
+      "Denmark"
+    ],
+    [
+      13,
+      "Denmark"
+    ],
+    [
+      17,
+      "Denmark"
+    ],
+    [
+      18,
+      "Russia"
+    ],
+    [
+      20,
+      "Russia"
+    ],
+    [
+      22,
+      "Denmark"
+    ],
+    [
+      28,
+      "Russia"
+    ],
+    [
+      34,
+      "Russia"
+    ],
+    [
+      36,
+      "Russia"
+    ],
+    [
+      37,
+      "Denmark"
+    ],
+    [
+      39,
+      "Russia"
+    ],
+    [
+      40,
+      "Denmark"
+    ],
+    [
+      42,
+      "Russia"
+    ],
+    [
+      43,
+      "Russia"
+    ],
+    [
+      44,
+      "Russia"
+    ],
+    [
+      45,
+      "Russia"
+    ],
+    [
+      46,
+      "Denmark"
+    ],
+    [
+      50,
+      "Russia"
+    ],
+    [
+      52,
+      "Rupert's Land"
+    ],
+    [
+      57,
+      "Rupert's Land"
+    ],
+    [
+      58,
+      "Rupert's Land"
+    ],
+    [
+      59,
+      "France"
+    ],
+    [
+      60,
+      "Rupert's Land"
+    ],
+    [
+      61,
+      "Rupert's Land"
+    ],
+    [
+      64,
+      "Rupert's Land"
+    ],
+    [
+      68,
+      "Rupert's Land"
+    ],
+    [
+      69,
+      "Rupert's Land"
+    ],
+    [
+      70,
+      "France"
+    ],
+    [
+      71,
+      "Great Britain"
+    ],
+    [
+      74,
+      "Great Britain"
+    ],
+    [
+      75,
+      "Great Britain"
+    ],
+    [
+      76,
+      "Great Britain"
+    ],
+    [
+      80,
+      "France"
+    ],
+    [
+      81,
+      "France"
+    ],
+    [
+      82,
+      "Rupert's Land"
+    ],
+    [
+      83,
+      "France"
+    ],
+    [
+      84,
+      "France"
+    ],
+    [
+      85,
+      "Louisiana"
+    ],
+    [
+      86,
+      "Louisiana"
+    ],
+    [
+      89,
+      "France"
+    ],
+    [
+      91,
+      "Wabanaki"
+    ],
+    [
+      92,
+      "France"
+    ],
+    [
+      94,
+      "France"
+    ],
+    [
+      95,
+      "France"
+    ],
+    [
+      96,
+      "France"
+    ],
+    [
+      98,
+      "France"
+    ],
+    [
+      99,
+      "France"
+    ],
+    [
+      102,
+      "France"
+    ],
+    [
+      103,
+      "Wabanaki"
+    ],
+    [
+      107,
+      "Great Britain"
+    ],
+    [
+      108,
+      "Louisiana"
+    ],
+    [
+      109,
+      "France"
+    ],
+    [
+      110,
+      "Louisiana"
+    ],
+    [
+      111,
+      "France"
+    ],
+    [
+      113,
+      "France"
+    ],
+    [
+      114,
+      "France"
+    ],
+    [
+      115,
+      "Great Britain"
+    ],
+    [
+      116,
+      "France"
+    ],
+    [
+      117,
+      "Louisiana"
+    ],
+    [
+      118,
+      "Wabanaki"
+    ],
+    [
+      119,
+      "Louisiana"
+    ],
+    [
+      120,
+      "France"
+    ],
+    [
+      121,
+      "Louisiana"
+    ],
+    [
+      123,
+      "Louisiana"
+    ],
+    [
+      124,
+      "Great Britain"
+    ],
+    [
+      125,
+      "Louisiana"
+    ],
+    [
+      126,
+      "Louisiana"
+    ],
+    [
+      127,
+      "France"
+    ],
+    [
+      128,
+      "Louisiana"
+    ],
+    [
+      130,
+      "Wabanaki"
+    ],
+    [
+      131,
+      "Great Britain"
+    ],
+    [
+      132,
+      "France"
+    ],
+    [
+      133,
+      "France"
+    ],
+    [
+      134,
+      "Great Britain"
+    ],
+    [
+      136,
+      "France"
+    ],
+    [
+      137,
+      "France"
+    ],
+    [
+      138,
+      "Great Britain"
+    ],
+    [
+      139,
+      "Louisiana"
+    ],
+    [
+      140,
+      "France"
+    ],
+    [
+      142,
+      "Louisiana"
+    ],
+    [
+      143,
+      "Louisiana"
+    ],
+    [
+      144,
+      "Louisiana"
+    ],
+    [
+      146,
+      "France"
+    ],
+    [
+      147,
+      "Great Britain"
+    ],
+    [
+      148,
+      "Louisiana"
+    ],
+    [
+      150,
+      "France"
+    ],
+    [
+      151,
+      "Iroquois"
+    ],
+    [
+      152,
+      "France"
+    ],
+    [
+      153,
+      "Louisiana"
+    ],
+    [
+      154,
+      "Great Britain"
+    ],
+    [
+      155,
+      "Iroquois"
+    ],
+    [
+      156,
+      "France"
+    ],
+    [
+      158,
+      "Iroquois"
+    ],
+    [
+      159,
+      "Louisiana"
+    ],
+    [
+      160,
+      "Great Britain"
+    ],
+    [
+      161,
+      "Great Britain"
+    ],
+    [
+      162,
+      "Louisiana"
+    ],
+    [
+      163,
+      "New Spain"
+    ],
+    [
+      164,
+      "Great Britain"
+    ],
+    [
+      165,
+      "France"
+    ],
+    [
+      166,
+      "Great Britain"
+    ],
+    [
+      167,
+      "Louisiana"
+    ],
+    [
+      168,
+      "Great Britain"
+    ],
+    [
+      169,
+      "France"
+    ],
+    [
+      171,
+      "Iroquois"
+    ],
+    [
+      172,
+      "Iroquois"
+    ],
+    [
+      173,
+      "Great Britain"
+    ],
+    [
+      174,
+      "Louisiana"
+    ],
+    [
+      175,
+      "Louisiana"
+    ],
+    [
+      176,
+      "Louisiana"
+    ],
+    [
+      177,
+      "Great Britain"
+    ],
+    [
+      178,
+      "Louisiana"
+    ],
+    [
+      180,
+      "Great Britain"
+    ],
+    [
+      182,
+      "Louisiana"
+    ],
+    [
+      183,
+      "Louisiana"
+    ],
+    [
+      185,
+      "Great Britain"
+    ],
+    [
+      186,
+      "Louisiana"
+    ],
+    [
+      187,
+      "Iroquois"
+    ],
+    [
+      188,
+      "Louisiana"
+    ],
+    [
+      189,
+      "Great Britain"
+    ],
+    [
+      190,
+      "France"
+    ],
+    [
+      191,
+      "New Spain"
+    ],
+    [
+      192,
+      "Louisiana"
+    ],
+    [
+      193,
+      "Louisiana"
+    ],
+    [
+      195,
+      "New Spain"
+    ],
+    [
+      196,
+      "New Spain"
+    ],
+    [
+      197,
+      "Louisiana"
+    ],
+    [
+      198,
+      "Louisiana"
+    ],
+    [
+      199,
+      "Louisiana"
+    ],
+    [
+      200,
+      "New Spain"
+    ],
+    [
+      201,
+      "Great Britain"
+    ],
+    [
+      202,
+      "Great Britain"
+    ],
+    [
+      203,
+      "Great Britain"
+    ],
+    [
+      204,
+      "Great Britain"
+    ],
+    [
+      205,
+      "Louisiana"
+    ],
+    [
+      206,
+      "Louisiana"
+    ],
+    [
+      207,
+      "Great Britain"
+    ],
+    [
+      208,
+      "Great Britain"
+    ],
+    [
+      209,
+      "Iroquois"
+    ],
+    [
+      210,
+      "Great Britain"
+    ],
+    [
+      211,
+      "New Spain"
+    ],
+    [
+      212,
+      "Louisiana"
+    ],
+    [
+      213,
+      "Louisiana"
+    ],
+    [
+      214,
+      "New Spain"
+    ],
+    [
+      215,
+      "Great Britain"
+    ],
+    [
+      216,
+      "Louisiana"
+    ],
+    [
+      217,
+      "Louisiana"
+    ],
+    [
+      218,
+      "Louisiana"
+    ],
+    [
+      219,
+      "Great Britain"
+    ],
+    [
+      220,
+      "Louisiana"
+    ],
+    [
+      221,
+      "Louisiana"
+    ],
+    [
+      222,
+      "Louisiana"
+    ],
+    [
+      223,
+      "Iroquois"
+    ],
+    [
+      224,
+      "Louisiana"
+    ],
+    [
+      225,
+      "Louisiana"
+    ],
+    [
+      226,
+      "New Spain"
+    ],
+    [
+      227,
+      "Iroquois"
+    ],
+    [
+      228,
+      "New Spain"
+    ],
+    [
+      229,
+      "Louisiana"
+    ],
+    [
+      230,
+      "Louisiana"
+    ],
+    [
+      231,
+      "Great Britain"
+    ],
+    [
+      232,
+      "Great Britain"
+    ],
+    [
+      233,
+      "Louisiana"
+    ],
+    [
+      234,
+      "Louisiana"
+    ],
+    [
+      235,
+      "Great Britain"
+    ],
+    [
+      236,
+      "Great Britain"
+    ],
+    [
+      237,
+      "Louisiana"
+    ],
+    [
+      239,
+      "New Spain"
+    ],
+    [
+      240,
+      "Louisiana"
+    ],
+    [
+      241,
+      "Iroquois"
+    ],
+    [
+      242,
+      "New Spain"
+    ],
+    [
+      243,
+      "Great Britain"
+    ],
+    [
+      244,
+      "Great Britain"
+    ],
+    [
+      245,
+      "New Spain"
+    ],
+    [
+      246,
+      "Louisiana"
+    ],
+    [
+      247,
+      "New Spain"
+    ],
+    [
+      248,
+      "Louisiana"
+    ],
+    [
+      249,
+      "Louisiana"
+    ],
+    [
+      250,
+      "Great Britain"
+    ],
+    [
+      251,
+      "New Spain"
+    ],
+    [
+      252,
+      "Cherokee"
+    ],
+    [
+      253,
+      "New Spain"
+    ],
+    [
+      254,
+      "Louisiana"
+    ],
+    [
+      255,
+      "Louisiana"
+    ],
+    [
+      256,
+      "Louisiana"
+    ],
+    [
+      257,
+      "Louisiana"
+    ],
+    [
+      258,
+      "Great Britain"
+    ],
+    [
+      259,
+      "New Spain"
+    ],
+    [
+      260,
+      "Great Britain"
+    ],
+    [
+      261,
+      "New Spain"
+    ],
+    [
+      262,
+      "Great Britain"
+    ],
+    [
+      263,
+      "Louisiana"
+    ],
+    [
+      264,
+      "Great Britain"
+    ],
+    [
+      265,
+      "New Spain"
+    ],
+    [
+      266,
+      "New Spain"
+    ],
+    [
+      267,
+      "Great Britain"
+    ],
+    [
+      268,
+      "New Spain"
+    ],
+    [
+      269,
+      "Louisiana"
+    ],
+    [
+      270,
+      "Cherokee"
+    ],
+    [
+      271,
+      "New Spain"
+    ],
+    [
+      272,
+      "Louisiana"
+    ],
+    [
+      273,
+      "New Spain"
+    ],
+    [
+      274,
+      "Louisiana"
+    ],
+    [
+      275,
+      "Great Britain"
+    ],
+    [
+      276,
+      "New Spain"
+    ],
+    [
+      277,
+      "Louisiana"
+    ],
+    [
+      278,
+      "Cherokee"
+    ],
+    [
+      279,
+      "Cherokee"
+    ],
+    [
+      280,
+      "New Spain"
+    ],
+    [
+      281,
+      "New Spain"
+    ],
+    [
+      282,
+      "Great Britain"
+    ],
+    [
+      283,
+      "New Spain"
+    ],
+    [
+      284,
+      "Louisiana"
+    ],
+    [
+      285,
+      "Cherokee"
+    ],
+    [
+      286,
+      "Great Britain"
+    ],
+    [
+      287,
+      "Cherokee"
+    ],
+    [
+      288,
+      "New Spain"
+    ],
+    [
+      289,
+      "Spain"
+    ],
+    [
+      290,
+      "Louisiana"
+    ],
+    [
+      291,
+      "Louisiana"
+    ],
+    [
+      292,
+      "New Spain"
+    ],
+    [
+      293,
+      "New Spain"
+    ],
+    [
+      294,
+      "Louisiana"
+    ],
+    [
+      295,
+      "Cherokee"
+    ],
+    [
+      296,
+      "New Spain"
+    ],
+    [
+      297,
+      "Louisiana"
+    ],
+    [
+      298,
+      "Spain"
+    ],
+    [
+      299,
+      "Louisiana"
+    ],
+    [
+      300,
+      "Spain"
+    ],
+    [
+      301,
+      "Louisiana"
+    ],
+    [
+      302,
+      "Louisiana"
+    ],
+    [
+      303,
+      "New Spain"
+    ],
+    [
+      304,
+      "Louisiana"
+    ],
+    [
+      305,
+      "Spain"
+    ],
+    [
+      306,
+      "New Spain"
+    ],
+    [
+      307,
+      "New Spain"
+    ],
+    [
+      308,
+      "New Spain"
+    ],
+    [
+      309,
+      "Spain"
+    ],
+    [
+      310,
+      "Great Britain"
+    ],
+    [
+      311,
+      "Great Britain"
+    ],
+    [
+      312,
+      "New Spain"
+    ],
+    [
+      313,
+      "New Spain"
+    ],
+    [
+      314,
+      "Great Britain"
+    ],
+    [
+      315,
+      "Great Britain"
+    ],
+    [
+      316,
+      "New Spain"
+    ],
+    [
+      317,
+      "New Spain"
+    ],
+    [
+      318,
+      "Great Britain"
+    ],
+    [
+      319,
+      "Great Britain"
+    ],
+    [
+      320,
+      "Great Britain"
+    ],
+    [
+      321,
+      "New Spain"
+    ],
+    [
+      322,
+      "Great Britain"
+    ],
+    [
+      323,
+      "Spain"
+    ],
+    [
+      324,
+      "Spain"
+    ],
+    [
+      325,
+      "Great Britain"
+    ],
+    [
+      326,
+      "New Spain"
+    ],
+    [
+      327,
+      "New Spain"
+    ],
+    [
+      328,
+      "New Spain"
+    ],
+    [
+      329,
+      "Spain"
+    ],
+    [
+      330,
+      "Spain"
+    ],
+    [
+      331,
+      "Spain"
+    ],
+    [
+      332,
+      "Saint-Domingue"
+    ],
+    [
+      333,
+      "New Spain"
+    ],
+    [
+      334,
+      "Spain"
+    ],
+    [
+      335,
+      "Spain"
+    ],
+    [
+      336,
+      "Spain"
+    ],
+    [
+      337,
+      "New Spain"
+    ],
+    [
+      338,
+      "New Spain"
+    ],
+    [
+      339,
+      "New Spain"
+    ],
+    [
+      340,
+      "Saint-Domingue"
+    ],
+    [
+      341,
+      "New Spain"
+    ],
+    [
+      342,
+      "Saint-Domingue"
+    ],
+    [
+      343,
+      "New Spain"
+    ],
+    [
+      344,
+      "New Spain"
+    ],
+    [
+      345,
+      "New Spain"
+    ],
+    [
+      346,
+      "New Spain"
+    ],
+    [
+      347,
+      "Great Britain"
+    ],
+    [
+      348,
+      "New Spain"
+    ],
+    [
+      349,
+      "Great Britain"
+    ],
+    [
+      350,
+      "New Spain"
+    ],
+    [
+      351,
+      "Great Britain"
+    ],
+    [
+      352,
+      "New Spain"
+    ],
+    [
+      353,
+      "Great Britain"
+    ],
+    [
+      354,
+      "Great Britain"
+    ],
+    [
+      355,
+      "New Spain"
+    ],
+    [
+      356,
+      "Great Britain"
+    ],
+    [
+      357,
+      "Great Britain"
+    ],
+    [
+      358,
+      "France"
+    ],
+    [
+      359,
+      "New Spain"
+    ],
+    [
+      360,
+      "Great Britain"
+    ],
+    [
+      361,
+      "New Spain"
+    ],
+    [
+      362,
+      "New Spain"
+    ],
+    [
+      363,
+      "New Spain"
+    ],
+    [
+      364,
+      "France"
+    ],
+    [
+      365,
+      "Great Britain"
+    ],
+    [
+      366,
+      "Great Britain"
+    ],
+    [
+      367,
+      "France"
+    ],
+    [
+      368,
+      "New Spain"
+    ],
+    [
+      369,
+      "New Spain"
+    ],
+    [
+      370,
+      "France"
+    ],
+    [
+      371,
+      "New Spain"
+    ],
+    [
+      372,
+      "New Spain"
+    ],
+    [
+      373,
+      "New Spain"
+    ],
+    [
+      374,
+      "New Spain"
+    ],
+    [
+      375,
+      "Great Britain"
+    ],
+    [
+      376,
+      "New Spain"
+    ],
+    [
+      377,
+      "New Spain"
+    ],
+    [
+      378,
+      "France"
+    ],
+    [
+      379,
+      "New Spain"
+    ],
+    [
+      380,
+      "New Spain"
+    ],
+    [
+      381,
+      "New Spain"
+    ],
+    [
+      382,
+      "New Spain"
+    ],
+    [
+      383,
+      "France"
+    ],
+    [
+      384,
+      "New Spain"
+    ],
+    [
+      385,
+      "Netherlands"
+    ],
+    [
+      386,
+      "France"
+    ],
+    [
+      387,
+      "New Spain"
+    ],
+    [
+      388,
+      "Netherlands"
+    ],
+    [
+      389,
+      "New Spain"
+    ],
+    [
+      390,
+      "New Granada"
+    ],
+    [
+      391,
+      "Netherlands"
+    ],
+    [
+      392,
+      "New Spain"
+    ],
+    [
+      393,
+      "New Granada"
+    ],
+    [
+      394,
+      "New Granada"
+    ],
+    [
+      395,
+      "New Spain"
+    ],
+    [
+      396,
+      "New Granada"
+    ],
+    [
+      397,
+      "New Granada"
+    ],
+    [
+      398,
+      "New Granada"
+    ],
+    [
+      399,
+      "New Spain"
+    ],
+    [
+      400,
+      "New Spain"
+    ],
+    [
+      401,
+      "New Spain"
+    ],
+    [
+      402,
+      "Great Britain"
+    ],
+    [
+      403,
+      "New Granada"
+    ],
+    [
+      404,
+      "New Spain"
+    ],
+    [
+      405,
+      "New Granada"
+    ],
+    [
+      406,
+      "New Granada"
+    ],
+    [
+      407,
+      "New Granada"
+    ],
+    [
+      408,
+      "New Spain"
+    ],
+    [
+      409,
+      "New Spain"
+    ],
+    [
+      410,
+      "New Granada"
+    ],
+    [
+      411,
+      "New Spain"
+    ],
+    [
+      412,
+      "New Granada"
+    ],
+    [
+      413,
+      "New Granada"
+    ],
+    [
+      414,
+      "New Spain"
+    ],
+    [
+      415,
+      "New Spain"
+    ],
+    [
+      416,
+      "New Granada"
+    ],
+    [
+      417,
+      "New Granada"
+    ],
+    [
+      418,
+      "New Granada"
+    ],
+    [
+      419,
+      "New Granada"
+    ],
+    [
+      420,
+      "New Spain"
+    ],
+    [
+      421,
+      "New Granada"
+    ],
+    [
+      422,
+      "New Spain"
+    ],
+    [
+      423,
+      "New Granada"
+    ],
+    [
+      424,
+      "New Granada"
+    ],
+    [
+      425,
+      "New Spain"
+    ],
+    [
+      426,
+      "New Granada"
+    ],
+    [
+      427,
+      "New Granada"
+    ],
+    [
+      428,
+      "New Spain"
+    ],
+    [
+      429,
+      "New Granada"
+    ],
+    [
+      430,
+      "New Granada"
+    ],
+    [
+      431,
+      "New Granada"
+    ],
+    [
+      432,
+      "New Granada"
+    ],
+    [
+      433,
+      "New Spain"
+    ],
+    [
+      434,
+      "New Spain"
+    ],
+    [
+      435,
+      "New Spain"
+    ],
+    [
+      436,
+      "New Spain"
+    ],
+    [
+      437,
+      "New Spain"
+    ],
+    [
+      438,
+      "New Granada"
+    ],
+    [
+      439,
+      "New Granada"
+    ],
+    [
+      440,
+      "New Granada"
+    ],
+    [
+      441,
+      "New Granada"
+    ],
+    [
+      442,
+      "New Granada"
+    ],
+    [
+      443,
+      "New Granada"
+    ],
+    [
+      444,
+      "New Granada"
+    ],
+    [
+      445,
+      "New Granada"
+    ],
+    [
+      446,
+      "New Granada"
+    ],
+    [
+      447,
+      "New Granada"
+    ],
+    [
+      448,
+      "New Spain"
+    ],
+    [
+      449,
+      "New Granada"
+    ],
+    [
+      450,
+      "New Granada"
+    ],
+    [
+      451,
+      "New Spain"
+    ],
+    [
+      452,
+      "Netherlands"
+    ],
+    [
+      453,
+      "New Granada"
+    ],
+    [
+      454,
+      "New Granada"
+    ],
+    [
+      455,
+      "New Granada"
+    ],
+    [
+      456,
+      "New Granada"
+    ],
+    [
+      457,
+      "New Granada"
+    ],
+    [
+      458,
+      "New Granada"
+    ],
+    [
+      459,
+      "New Spain"
+    ],
+    [
+      460,
+      "New Granada"
+    ],
+    [
+      461,
+      "New Granada"
+    ],
+    [
+      462,
+      "New Granada"
+    ],
+    [
+      463,
+      "New Granada"
+    ],
+    [
+      464,
+      "Netherlands"
+    ],
+    [
+      465,
+      "Netherlands"
+    ],
+    [
+      466,
+      "Netherlands"
+    ],
+    [
+      467,
+      "Netherlands"
+    ],
+    [
+      468,
+      "Netherlands"
+    ],
+    [
+      469,
+      "Netherlands"
+    ],
+    [
+      470,
+      "France"
+    ],
+    [
+      471,
+      "Netherlands"
+    ],
+    [
+      472,
+      "New Granada"
+    ],
+    [
+      473,
+      "New Granada"
+    ],
+    [
+      474,
+      "France"
+    ],
+    [
+      475,
+      "Netherlands"
+    ],
+    [
+      476,
+      "New Granada"
+    ],
+    [
+      477,
+      "New Granada"
+    ],
+    [
+      478,
+      "New Granada"
+    ],
+    [
+      479,
+      "Netherlands"
+    ],
+    [
+      480,
+      "Portugal"
+    ],
+    [
+      481,
+      "New Granada"
+    ],
+    [
+      482,
+      "France"
+    ],
+    [
+      483,
+      "New Granada"
+    ],
+    [
+      484,
+      "New Granada"
+    ],
+    [
+      485,
+      "Portugal"
+    ],
+    [
+      486,
+      "New Granada"
+    ],
+    [
+      487,
+      "Netherlands"
+    ],
+    [
+      488,
+      "New Granada"
+    ],
+    [
+      489,
+      "New Granada"
+    ],
+    [
+      490,
+      "New Granada"
+    ],
+    [
+      491,
+      "Portugal"
+    ],
+    [
+      492,
+      "New Granada"
+    ],
+    [
+      493,
+      "New Granada"
+    ],
+    [
+      494,
+      "New Granada"
+    ],
+    [
+      495,
+      "Portugal"
+    ],
+    [
+      496,
+      "New Granada"
+    ],
+    [
+      497,
+      "New Granada"
+    ],
+    [
+      498,
+      "New Granada"
+    ],
+    [
+      499,
+      "New Granada"
+    ],
+    [
+      500,
+      "Portugal"
+    ],
+    [
+      501,
+      "New Granada"
+    ],
+    [
+      502,
+      "Portugal"
+    ],
+    [
+      503,
+      "Portugal"
+    ],
+    [
+      504,
+      "New Granada"
+    ],
+    [
+      505,
+      "Portugal"
+    ],
+    [
+      506,
+      "New Granada"
+    ],
+    [
+      507,
+      "New Granada"
+    ],
+    [
+      508,
+      "Peru"
+    ],
+    [
+      509,
+      "New Granada"
+    ],
+    [
+      510,
+      "New Granada"
+    ],
+    [
+      511,
+      "Portugal"
+    ],
+    [
+      512,
+      "Portugal"
+    ],
+    [
+      513,
+      "Portugal"
+    ],
+    [
+      514,
+      "Portugal"
+    ],
+    [
+      515,
+      "New Granada"
+    ],
+    [
+      516,
+      "Portugal"
+    ],
+    [
+      517,
+      "Portugal"
+    ],
+    [
+      518,
+      "Peru"
+    ],
+    [
+      519,
+      "New Granada"
+    ],
+    [
+      520,
+      "Portugal"
+    ],
+    [
+      521,
+      "Portugal"
+    ],
+    [
+      522,
+      "Portugal"
+    ],
+    [
+      523,
+      "Peru"
+    ],
+    [
+      524,
+      "Portugal"
+    ],
+    [
+      525,
+      "Portugal"
+    ],
+    [
+      526,
+      "Portugal"
+    ],
+    [
+      527,
+      "Peru"
+    ],
+    [
+      528,
+      "Portugal"
+    ],
+    [
+      529,
+      "Peru"
+    ],
+    [
+      530,
+      "Portugal"
+    ],
+    [
+      531,
+      "Peru"
+    ],
+    [
+      532,
+      "Portugal"
+    ],
+    [
+      533,
+      "Portugal"
+    ],
+    [
+      534,
+      "Peru"
+    ],
+    [
+      535,
+      "Portugal"
+    ],
+    [
+      536,
+      "Peru"
+    ],
+    [
+      537,
+      "Peru"
+    ],
+    [
+      538,
+      "Portugal"
+    ],
+    [
+      539,
+      "Portugal"
+    ],
+    [
+      540,
+      "Peru"
+    ],
+    [
+      541,
+      "Peru"
+    ],
+    [
+      542,
+      "Portugal"
+    ],
+    [
+      543,
+      "Portugal"
+    ],
+    [
+      544,
+      "Portugal"
+    ],
+    [
+      545,
+      "Portugal"
+    ],
+    [
+      546,
+      "Rio de la Plata"
+    ],
+    [
+      547,
+      "Portugal"
+    ],
+    [
+      548,
+      "Portugal"
+    ],
+    [
+      549,
+      "Peru"
+    ],
+    [
+      550,
+      "Peru"
+    ],
+    [
+      551,
+      "Portugal"
+    ],
+    [
+      552,
+      "Peru"
+    ],
+    [
+      553,
+      "Rio de la Plata"
+    ],
+    [
+      554,
+      "Peru"
+    ],
+    [
+      555,
+      "Peru"
+    ],
+    [
+      556,
+      "Rio de la Plata"
+    ],
+    [
+      557,
+      "Peru"
+    ],
+    [
+      558,
+      "Portugal"
+    ],
+    [
+      559,
+      "Peru"
+    ],
+    [
+      560,
+      "Portugal"
+    ],
+    [
+      561,
+      "Peru"
+    ],
+    [
+      562,
+      "Peru"
+    ],
+    [
+      563,
+      "Peru"
+    ],
+    [
+      564,
+      "Portugal"
+    ],
+    [
+      565,
+      "Rio de la Plata"
+    ],
+    [
+      566,
+      "Portugal"
+    ],
+    [
+      567,
+      "Portugal"
+    ],
+    [
+      568,
+      "Peru"
+    ],
+    [
+      569,
+      "Rio de la Plata"
+    ],
+    [
+      570,
+      "Peru"
+    ],
+    [
+      571,
+      "Portugal"
+    ],
+    [
+      572,
+      "Peru"
+    ],
+    [
+      573,
+      "Portugal"
+    ],
+    [
+      574,
+      "Rio de la Plata"
+    ],
+    [
+      575,
+      "Peru"
+    ],
+    [
+      576,
+      "Rio de la Plata"
+    ],
+    [
+      577,
+      "Rio de la Plata"
+    ],
+    [
+      578,
+      "Portugal"
+    ],
+    [
+      579,
+      "Portugal"
+    ],
+    [
+      580,
+      "Rio de la Plata"
+    ],
+    [
+      581,
+      "Rio de la Plata"
+    ],
+    [
+      582,
+      "Rio de la Plata"
+    ],
+    [
+      583,
+      "Rio de la Plata"
+    ],
+    [
+      584,
+      "Portugal"
+    ],
+    [
+      585,
+      "Rio de la Plata"
+    ],
+    [
+      586,
+      "Portugal"
+    ],
+    [
+      587,
+      "Rio de la Plata"
+    ],
+    [
+      588,
+      "Rio de la Plata"
+    ],
+    [
+      589,
+      "Rio de la Plata"
+    ],
+    [
+      590,
+      "Rio de la Plata"
+    ],
+    [
+      591,
+      "Rio de la Plata"
+    ],
+    [
+      592,
+      "Portugal"
+    ],
+    [
+      593,
+      "Rio de la Plata"
+    ],
+    [
+      594,
+      "Rio de la Plata"
+    ],
+    [
+      595,
+      "Rio de la Plata"
+    ],
+    [
+      596,
+      "Rio de la Plata"
+    ],
+    [
+      597,
+      "Rio de la Plata"
+    ],
+    [
+      598,
+      "Rio de la Plata"
+    ],
+    [
+      599,
+      "Peru"
+    ],
+    [
+      600,
+      "Rio de la Plata"
+    ],
+    [
+      601,
+      "Rio de la Plata"
+    ],
+    [
+      602,
+      "Rio de la Plata"
+    ],
+    [
+      603,
+      "Rio de la Plata"
+    ],
+    [
+      604,
+      "Portugal"
+    ],
+    [
+      605,
+      "Rio de la Plata"
+    ],
+    [
+      606,
+      "Rio de la Plata"
+    ],
+    [
+      607,
+      "Portugal"
+    ],
+    [
+      608,
+      "Rio de la Plata"
+    ],
+    [
+      609,
+      "Rio de la Plata"
+    ],
+    [
+      610,
+      "Rio de la Plata"
+    ],
+    [
+      611,
+      "Rio de la Plata"
+    ],
+    [
+      612,
+      "Peru"
+    ],
+    [
+      613,
+      "Rio de la Plata"
+    ],
+    [
+      615,
+      "Rio de la Plata"
+    ],
+    [
+      616,
+      "Rio de la Plata"
+    ],
+    [
+      617,
+      "Rio de la Plata"
+    ],
+    [
+      618,
+      "Rio de la Plata"
+    ],
+    [
+      619,
+      "Rio de la Plata"
+    ],
+    [
+      620,
+      "Rio de la Plata"
+    ],
+    [
+      621,
+      "Rio de la Plata"
+    ],
+    [
+      622,
+      "Peru"
+    ],
+    [
+      623,
+      "Rio de la Plata"
+    ],
+    [
+      626,
+      "Peru"
+    ],
+    [
+      628,
+      "Peru"
+    ]
+  ]
+}
