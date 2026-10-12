@@ -103,7 +103,9 @@ impl Art {
         let sheets = load_sheets(images);
         let mut flags = HashMap::new();
         for (name, file) in FLAG_FILES {
-            if let Some(tex) = load_tex(&images.join(file), FilterMode::Nearest) {
+            // Flags are drawings, not pixel art. Linear filtering plus mipmaps
+            // keeps a 5px map flag from sparkling as the camera moves.
+            if let Some(tex) = load_tex(&images.join(file), FilterMode::Linear) {
                 flags.insert((*name).to_string(), tex);
             }
         }
@@ -153,7 +155,7 @@ impl Art {
         let news = load_tex(&images.join("news.png"), FilterMode::Linear).unwrap_or_else(|| blank(8, 8));
         let explosion = load_gif(&images.join("explosion.gif"));
         let smoke = load_gif(&images.join("smoke.gif"));
-        if let Some(tex) = load_tex(&images.join("continent.webp"), FilterMode::Nearest) {
+        if let Some(tex) = load_tex(&images.join("continent.webp"), FilterMode::Linear) {
             flags.insert("Continental".to_string(), tex);
         }
         let mut faces = HashMap::new();
@@ -202,7 +204,7 @@ impl Art {
                 governments.insert(name.to_string(), tex);
             }
         }
-        let mountain = load_tex(&images.join("mountain.webp"), FilterMode::Nearest);
+        let mountain = load_tex(&images.join("mountain.webp"), FilterMode::Linear);
         let plantation = load_tex(&images.join("buildings/plantation.png"), FilterMode::Nearest);
         let portrait_bg = load_tex(&images.join("portraitbackground.png"), FilterMode::Linear);
         Self { frame, news, scenarios, flags, buildings, farms, biomes, capitals, sheets, explosion, smoke, mountain, plantation, faces, ethnicities, rulers, religions, governments, portrait_bg }
@@ -745,20 +747,76 @@ fn open_sheet(path: &Path) -> Option<(Texture2D, f32, f32)> {
     Some((tex, w as f32, h as f32))
 }
 
+/// Longest side uploaded for a panel, flag, or portrait.
+///
+/// The pictures on disk are already near this size. The cap is a backstop so a
+/// multi-megapixel photo cannot become a GPU texture and flash while it is
+/// drawn into a small panel.
+const UI_TEX_MAX: u32 = 1024;
+
+fn fit_ui_image(img: image::DynamicImage, max_side: u32) -> image::RgbaImage {
+    let w = img.width();
+    let h = img.height();
+    let side = w.max(h);
+    if side <= max_side || w == 0 || h == 0 {
+        return img.to_rgba8();
+    }
+    let scale = max_side as f32 / side as f32;
+    let nw = ((w as f32 * scale).round() as u32).max(1);
+    let nh = ((h as f32 * scale).round() as u32).max(1);
+    let rgba = img.to_rgba8();
+    image::imageops::resize(&rgba, nw, nh, image::imageops::FilterType::Triangle)
+}
+
 fn load_tex(path: &Path, filter: FilterMode) -> Option<Texture2D> {
     let img = match image::open(path) {
-        Ok(img) => img.to_rgba8(),
+        Ok(img) => img,
         Err(err) => {
             eprintln!("image skipped ({}): {err}", path.display());
             return None;
         }
     };
-    if img.width() > u16::MAX as u32 || img.height() > u16::MAX as u32 {
+    let img = fit_ui_image(img, UI_TEX_MAX);
+    let w = img.width();
+    let h = img.height();
+    if w > u16::MAX as u32 || h > u16::MAX as u32 || w == 0 || h == 0 {
         return None;
     }
-    let tex = Texture2D::from_rgba8(img.width() as u16, img.height() as u16, &img.into_raw());
-    tex.set_filter(filter);
-    Some(tex)
+    let raw = img.into_raw();
+    if filter == FilterMode::Linear {
+        // Mipmaps: drawing a photo smaller than its texture without them picks
+        // one texel per screen pixel, and that choice flips between frames.
+        Some(upload_linear(&raw, w, h))
+    } else {
+        let tex = Texture2D::from_rgba8(w as u16, h as u16, &raw);
+        tex.set_filter(filter);
+        Some(tex)
+    }
+}
+
+/// Photo texture with a mip chain. `Texture2D::set_filter` turns mipmaps off,
+/// so the sampler is set on the miniquad texture, same as the satellite map.
+fn upload_linear(pixels: &[u8], w: u32, h: u32) -> Texture2D {
+    use miniquad::{FilterMode, MipmapFilterMode, TextureAccess, TextureFormat, TextureKind, TextureParams, TextureSource, TextureWrap};
+    let params = TextureParams {
+        kind: TextureKind::Texture2D,
+        format: TextureFormat::RGBA8,
+        wrap: TextureWrap::Clamp,
+        min_filter: FilterMode::Linear,
+        mag_filter: FilterMode::Linear,
+        mipmap_filter: MipmapFilterMode::Linear,
+        width: w,
+        height: h,
+        allocate_mipmaps: true,
+        sample_count: 1,
+    };
+    unsafe {
+        let gl = macroquad::window::get_internal_gl();
+        let id = gl.quad_context.new_texture(TextureAccess::Static, TextureSource::Bytes(pixels), params);
+        gl.quad_context.texture_generate_mipmaps(id);
+        gl.quad_context.texture_set_filter(id, FilterMode::Linear, MipmapFilterMode::Linear);
+        Texture2D::from_miniquad_texture(id)
+    }
 }
 
 fn load_gif(path: &Path) -> Vec<Texture2D> {
