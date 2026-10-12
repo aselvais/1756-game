@@ -18,7 +18,7 @@ use art::{
 };
 use audio::Bank;
 use config::{
-    biome_mods, biome_name, building, faction_color, font_scale, government_of, is_elective, is_native,
+    biome_mods, biome_name, building, faction_color, font_scale, government_info, government_of, is_elective, is_native,
     law_categories, owner_ethnicity_key, owner_religion_key, parties_of, scaled_font, set_font_scale, set_sound_volume,
     sound_volume, BUILDINGS, COORD_SCALE, DAY_TICKS, FONT_SCALE_MAX, FONT_SCALE_MIN, ISLANDS, MAP_H, MAP_W, PAN_SPEED,
     SOUND_VOLUME_MAX, SOUND_VOLUME_MIN,
@@ -1791,11 +1791,12 @@ impl App {
             let bg = if on { Color::from_rgba(90, 75, 40, 255) } else { Color::from_rgba(50, 45, 35, 255) };
             draw_rectangle(r.x, r.y, r.w, r.h, bg);
             draw_rectangle_lines(r.x, r.y, r.w, r.h, 2.0, gold());
-            let short = match i {
-                0 => "Ethnic",
-                1 => "Conscript",
-                2 => "Religion",
-                _ => "Taxation",
+            // The stored name is "Conscription Laws" and the rest are one word
+            // plus "Laws". The conscription button is too narrow for the full word.
+            let full = law_categories().get(i).map(|cat| cat.name).unwrap_or("");
+            let short = match full {
+                "Conscription Laws" => "Conscript",
+                _ => full.split_whitespace().next().unwrap_or(full),
             };
             label_center(short, r.x + r.w / 2.0, r.y + 7.0, 11.0, if on { WHITE } else { gold() });
         }
@@ -1961,6 +1962,9 @@ impl App {
         let Some(city) = self.game.cities.get(index) else { return };
         let nation = if city.sovereign.is_empty() { city.owner.clone() } else { city.sovereign.clone() };
         let (gov_key, gov_name) = government_of(&nation, self.game.year);
+        // Flavor line for the government type. The second string is a planned
+        // gameplay effect and is not applied yet, so it stays off the panel.
+        let (gov_blurb, _) = government_info(gov_key);
         let panel = self.politics_panel_rect();
         gold_panel(panel.x, panel.y, panel.w, panel.h, 230);
         text_top(&format!("{nation} - Politics"), panel.x + 10.0, panel.y + 8.0, 16.0, gold());
@@ -1970,6 +1974,9 @@ impl App {
         }
         text_top("Government", panel.x + 60.0, panel.y + 40.0, 13.0, Color::from_rgba(200, 200, 200, 255));
         text_top(gov_name, panel.x + 60.0, panel.y + 58.0, 15.0, Color::from_rgba(230, 220, 180, 255));
+        if !gov_blurb.is_empty() {
+            text_top(gov_blurb, panel.x + 60.0, panel.y + 76.0, 11.0, Color::from_rgba(170, 170, 170, 255));
+        }
 
         if !is_elective(gov_key) {
             label_center("No elections", panel.x + panel.w / 2.0, panel.y + 150.0, 20.0, Color::from_rgba(220, 160, 90, 255));
