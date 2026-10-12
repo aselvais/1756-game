@@ -5,7 +5,9 @@
 //! `--features bundle` carries those images inside the executable.
 
 mod art;
+mod audio;
 mod config;
+mod cues;
 mod editor;
 mod sim;
 mod world;
@@ -14,11 +16,14 @@ use art::{
     alt_flags, codex_flag, codex_nations, codex_variants, gold_panel, land_clip, outlined, outlined_center,
     water_clip, Art, Boom, Marcher,
 };
+use audio::Bank;
 use config::{
     biome_mods, biome_name, building, faction_color, font_scale, government_of, is_elective, is_native,
-    law_categories, owner_ethnicity_key, owner_religion_key, parties_of, scaled_font, set_font_scale, BUILDINGS,
-    COORD_SCALE, DAY_TICKS, FONT_SCALE_MAX, FONT_SCALE_MIN, ISLANDS, MAP_H, MAP_W, PAN_SPEED,
+    law_categories, owner_ethnicity_key, owner_religion_key, parties_of, scaled_font, set_font_scale, set_sound_volume,
+    sound_volume, BUILDINGS, COORD_SCALE, DAY_TICKS, FONT_SCALE_MAX, FONT_SCALE_MIN, ISLANDS, MAP_H, MAP_W, PAN_SPEED,
+    SOUND_VOLUME_MAX, SOUND_VOLUME_MIN,
 };
+use cues::Cue;
 use editor::{Editor, MapDef, EDITOR_NATIONS};
 use macroquad::prelude::*;
 use ::rand::Rng;
@@ -39,6 +44,11 @@ fn window_conf() -> Conf {
         // at the end of every broken batch, and on many GPUs that resolve
         // produces intermittent dim/flicker frames. One sample avoids it.
         sample_count: 1,
+        // Render at the monitor's real resolution. With this off, Windows
+        // upscales a smaller framebuffer while the map moves, and that resample
+        // reads as the background blinking during pan and zoom. Logical
+        // coordinates stay the same: macroquad divides by the DPI scale.
+        high_dpi: true,
         // Force vsync (swap interval 1). Without a locked swap interval the
         // window can present partially-composited frames, which shows up as
         // flicker on Windows.
@@ -100,6 +110,8 @@ struct App {
     /// recomputed only when ownership changes (alongside `refresh_overlay`) so
     /// the per-frame draw stays cheap. See `rebuild_nation_labels`.
     nation_labels: Vec<NationLabel>,
+    /// Synthesized effects. Empty if the audio device could not be opened.
+    sfx: Bank,
 }
 
 /// One rendered character of a nation title, placed in world space. The glyph
@@ -153,6 +165,15 @@ const ANIM_SLOWDOWN: i32 = 10;
 /// up to 8.0 (closest).
 const LOD_ZOOM: f32 = 2.2;
 
+/// Outlined city text is hidden while at least this much of the map width is
+/// on screen. The fit-to-width opening view is 1.0, and that view has every
+/// settlement visible. The outline draws each string nine times.
+const NAME_SPAN: f32 = 0.55;
+
+/// Garrison counts are drawn for every settlement, so they wait until the
+/// camera is a little closer than capital names.
+const TROOP_SPAN: f32 = 0.40;
+
 #[macroquad::main(window_conf)]
 async fn main() {
     #[cfg(windows)]
@@ -166,9 +187,9 @@ async fn main() {
         eprintln!("{err}");
         panic!("could not load game images from {}", images.display());
     });
-    let map_tex = Texture2D::from_rgba8(maps.w as u16, maps.h as u16, &maps.display);
-    map_tex.set_filter(FilterMode::Linear);
+    let map_tex = satellite_texture(&maps.display, maps.w, maps.h);
     let art = Art::load(&images);
+    let sfx = Bank::load().await;
     let marchers = art.marchers();
     let mountains = mountain_spots(&maps);
     let zoom = screen_width() / MAP_W as f32;
@@ -205,6 +226,7 @@ async fn main() {
         editor: None,
         editor_overlay: None,
         nation_labels: Vec::new(),
+        sfx,
     };
     loop {
         app.frame();
@@ -242,6 +264,22 @@ impl App {
             Mode::Paused => self.play(true),
             Mode::Editor => self.editor_screen(),
         }
+        self.play_cues();
+    }
+
+    fn play_cues(&mut self) {
+        let cues = self.game.take_cues();
+        self.sfx.play(&cues, sound_volume());
+    }
+
+    /// A button click. Plays the UI tick when the rectangle is pressed.
+    fn press(&mut self, rect: Rect) -> bool {
+        if left_click(rect) {
+            self.game.cue(Cue::Click);
+            true
+        } else {
+            false
+        }
     }
 
     fn menu(&mut self) {
@@ -269,15 +307,15 @@ impl App {
             return;
         }
         if !killed {
-            if left_click(play) {
+            if self.press(play) {
                 self.mode = Mode::Scenarios { scroll: 0.0 };
-            } else if left_click(codex) {
+            } else if self.press(codex) {
                 self.mode = Mode::Codex { nation: None, variant: 0 };
-            } else if left_click(editor) {
+            } else if self.press(editor) {
                 self.open_editor();
-            } else if left_click(settings) {
+            } else if self.press(settings) {
                 self.settings_open = true;
-            } else if left_click(exit) {
+            } else if self.press(exit) {
                 std::process::exit(0);
             }
         }
@@ -323,6 +361,7 @@ impl App {
             shadow_center(title, cx + card_w / 2.0, cy + card_h - 36.0, 24.0, gold());
             if !killed && left_click(rect) {
                 self.begin(*year);
+                self.game.cue(Cue::Fanfare);
                 return;
             }
         }
@@ -335,7 +374,7 @@ impl App {
         let back = Rect::new(w / 2.0 - 60.0, cy + card_h + 20.0, 120.0, 40.0);
         self.art.button(back, "Back", 20.0);
         label_center("Scroll to see more", w * 0.5, cy + card_h + 68.0, 16.0, Color::from_rgba(150, 150, 150, 255));
-        if !killed && (left_click(back) || is_key_pressed(KeyCode::Escape)) {
+        if !killed && (self.press(back) || is_key_pressed(KeyCode::Escape)) {
             self.mode = Mode::Menu;
         } else if !killed {
             self.mode = Mode::Scenarios { scroll };
@@ -373,14 +412,14 @@ impl App {
                     stretch(tex, Rect::new(cx - flag_sz / 2.0, cell.y, flag_sz, flag_sz));
                 }
                 label_center(name, cx, cell.y + flag_sz + 5.0, 18.0, WHITE);
-                if left_click(cell) {
+                if self.press(cell) {
                     nation = Some((*name).to_string());
                     variant = 0;
                 }
             }
             let back = Rect::new(w / 2.0 - 60.0, gy + grid_h + 20.0, 120.0, 40.0);
             self.art.button(back, "Back", 20.0);
-            if left_click(back) || is_key_pressed(KeyCode::Escape) {
+            if self.press(back) || is_key_pressed(KeyCode::Escape) {
                 leave = true;
             }
         } else if let Some(sel) = nation.clone() {
@@ -411,9 +450,9 @@ impl App {
                 let right = Rect::new(w / 2.0 + 190.0, unit_y + 60.0, 30.0, 30.0);
                 draw_triangle(vec2(left.x + left.w, left.y), vec2(left.x, left.y + left.h / 2.0), vec2(left.x + left.w, left.y + left.h), gold());
                 draw_triangle(vec2(right.x, right.y), vec2(right.x + right.w, right.y + right.h / 2.0), vec2(right.x, right.y + right.h), gold());
-                if left_click(left) {
+                if self.press(left) {
                     variant -= 1;
-                } else if left_click(right) {
+                } else if self.press(right) {
                     variant += 1;
                 }
             }
@@ -432,7 +471,7 @@ impl App {
             }
             let back = Rect::new(w / 2.0 - 60.0, h - 80.0, 120.0, 40.0);
             self.art.button(back, "Back", 20.0);
-            if left_click(back) {
+            if self.press(back) {
                 nation = None;
                 variant = 0;
             } else if is_key_pressed(KeyCode::Escape) {
@@ -520,6 +559,7 @@ impl App {
         if let Some((title, body)) = self.game.paper.clone() {
             if self.paint_paper(&title, &body) {
                 self.game.paper = None;
+                self.game.cue(Cue::Click);
             }
         }
         if paused {
@@ -529,12 +569,9 @@ impl App {
 
     fn paint_world(&mut self) {
         clear_background(Color::from_rgba(10, 10, 30, 255));
-        stretch(
-            &self.map_tex,
-            Rect::new(self.cam_x, self.cam_y, MAP_W as f32 * self.zoom, MAP_H as f32 * self.zoom),
-        );
+        draw_map_layer(&self.map_tex, self.cam_x, self.cam_y, self.zoom);
         if let Some(overlay) = &self.overlay {
-            stretch(overlay, Rect::new(self.cam_x, self.cam_y, MAP_W as f32 * self.zoom, MAP_H as f32 * self.zoom));
+            draw_map_layer(overlay, self.cam_x, self.cam_y, self.zoom);
         }
         let tint = match self.game.season() {
             "Winter" => Some(Color::from_rgba(220, 230, 255, 25)),
@@ -598,6 +635,7 @@ impl App {
             };
             if mx >= x && mx <= x + w && my >= y && my <= y + hh {
                 marcher.dead = true;
+                self.game.cue(Cue::Shot);
                 self.booms.push(Boom { x: x + w * 0.5 - 120.0, y: y + hh * 0.5 - 120.0, tick: 0 });
                 return true;
             }
@@ -731,8 +769,10 @@ impl App {
         }
         let min_x = screen_width() - MAP_W as f32 * self.zoom;
         let min_y = screen_height() - MAP_H as f32 * self.zoom;
-        self.cam_x = self.cam_x.clamp(min_x.min(0.0), 0.0);
-        self.cam_y = self.cam_y.clamp(min_y.min(0.0), 0.0);
+        // Whole screen pixels. A fractional camera makes the satellite texture
+        // resample on every pan step, which shimmers on the photo.
+        self.cam_x = self.cam_x.round().clamp(min_x.min(0.0), 0.0);
+        self.cam_y = self.cam_y.round().clamp(min_y.min(0.0), 0.0);
     }
 
     fn map_clicks(&mut self) {
@@ -749,6 +789,7 @@ impl App {
         if self.politics_open && self.politics_panel_rect().contains(vec2(mx, my)) {
             if self.politics_close_rect().contains(vec2(mx, my)) {
                 self.politics_open = false;
+                self.game.cue(Cue::Click);
             }
             return;
         }
@@ -759,6 +800,7 @@ impl App {
             if self.laws_open {
                 self.politics_open = false;
             }
+            self.game.cue(Cue::Click);
             return;
         }
         if self.selected.is_some() && self.politics_tab_rect().contains(vec2(mx, my)) {
@@ -766,10 +808,12 @@ impl App {
             if self.politics_open {
                 self.laws_open = false;
             }
+            self.game.cue(Cue::Click);
             return;
         }
         if self.news_toggle_rect().contains(vec2(mx, my)) {
             self.news_open = !self.news_open;
+            self.game.cue(Cue::Click);
             return;
         }
         if self.speed_click(mx, my) || self.hud_hit(mx, my) {
@@ -787,6 +831,9 @@ impl App {
             }
         }
         if hit.is_some() {
+            if self.selected != hit {
+                self.game.cue(Cue::Select);
+            }
             self.selected = if self.selected == hit { None } else { hit };
             self.selected_region = -1;
         } else {
@@ -845,6 +892,7 @@ impl App {
     }
 
     fn speed_keys(&mut self) {
+        let before = self.game.speed;
         if is_key_pressed(KeyCode::Space) || is_key_pressed(KeyCode::Key0) {
             self.game.speed = 0;
         }
@@ -860,6 +908,9 @@ impl App {
         if is_key_pressed(KeyCode::Key4) {
             self.game.speed = 6;
         }
+        if self.game.speed != before {
+            self.game.cue(Cue::Click);
+        }
     }
 
     fn speed_click(&mut self, mx: f32, my: f32) -> bool {
@@ -870,6 +921,7 @@ impl App {
         for (rect, spd) in layout.buttons {
             if rect.contains(vec2(mx, my)) {
                 self.game.speed = spd;
+                self.game.cue(Cue::Click);
                 return true;
             }
         }
@@ -989,6 +1041,10 @@ impl App {
 
     fn draw_cities(&self) {
         let year = self.game.year;
+        // How much of the map width is on screen. 1.0 is the opening view.
+        let span = screen_width() / self.zoom.max(0.0001) / MAP_W as f32;
+        let show_names = span < NAME_SPAN;
+        let show_troops = span < TROOP_SPAN;
         for city in &self.game.cities {
             let (sx, sy) = self.world_to_screen(city.x, city.y);
             if !on_screen(sx, sy, 120.0) {
@@ -1011,17 +1067,19 @@ impl App {
             // Only capitals show their name on the map — a displayed settlement
             // title is the cue that the city is its nation's capital. Every
             // other settlement is unlabeled (its name still shows in panels on
-            // selection/hover).
-            if city.is_capital {
+            // selection/hover). Both strings are skipped on the wide view.
+            if show_names && city.is_capital {
                 let tier = if city.tier > 0 { format!(" [T{}]", city.tier) } else { String::new() };
                 outlined_center(&format!("{}{tier}", city.name), sx, name_y, 16.0, WHITE);
             }
-            outlined_center(&city.troops.to_string(), sx, sy + (10.0 * self.zoom).max(8.0), 16.0, WHITE);
-            if city.owner != city.sovereign {
+            if show_troops {
+                outlined_center(&city.troops.to_string(), sx, sy + (10.0 * self.zoom).max(8.0), 16.0, WHITE);
+            }
+            if show_names && city.owner != city.sovereign {
                 let c = faction_color(&city.owner);
                 outlined_center("(occupied)", sx, name_y + 12.0, 16.0, Color::from_rgba(c[0], c[1], c[2], 255));
             }
-            if self.game.is_flooded(city.id) {
+            if show_names && self.game.is_flooded(city.id) {
                 outlined_center("(flooded)", sx, sy + (34.0 * self.zoom).max(34.0), 16.0, Color::from_rgba(80, 150, 255, 255));
             }
         }
@@ -1809,11 +1867,13 @@ impl App {
         let p = vec2(mx, my);
         if self.laws_close_rect().contains(p) {
             self.laws_open = false;
+            self.game.cue(Cue::Click);
             return;
         }
         for (i, r) in self.laws_cat_rects() {
             if r.contains(p) {
                 self.laws_category = i;
+                self.game.cue(Cue::Click);
                 return;
             }
         }
@@ -2210,56 +2270,63 @@ impl App {
         left_click(x_btn) || is_key_pressed(KeyCode::Escape) || is_key_pressed(KeyCode::Enter) || is_key_pressed(KeyCode::Space)
     }
 
-    /// Settings overlay: a dark panel with a font-size slider. Shown over the
-    /// menu or the pause screen. The slider is clamped to a safe range so text
-    /// scales without breaking the fixed panel layouts.
+    /// Settings overlay: font size and effect volume. Shown over the menu or
+    /// the pause screen. Font size stays in the range the fixed panels can
+    /// tolerate. Volume runs from mute to full.
     fn draw_settings_overlay(&mut self) {
         let w = screen_width();
         let h = screen_height();
         draw_rectangle(0.0, 0.0, w, h, Color::from_rgba(0, 0, 0, 180));
         let pw = 460.0;
-        let ph = 260.0;
+        let ph = 380.0;
         let px = (w - pw) / 2.0;
         let py = (h - ph) / 2.0;
         gold_panel(px, py, pw, ph, 245);
         label_center("Settings", px + pw / 2.0, py + 16.0, 30.0, gold());
 
-        // Font size row.
         let scale = font_scale();
-        label_center(&format!("Font Size: {:.0}%", scale * 100.0), px + pw / 2.0, py + 70.0, 20.0, WHITE);
+        label_center(&format!("Font Size: {:.0}%", scale * 100.0), px + pw / 2.0, py + 68.0, 20.0, WHITE);
+        let font_track = Rect::new(px + 70.0, py + 112.0, pw - 140.0, 8.0);
+        draw_slider(font_track, (scale - FONT_SCALE_MIN) / (FONT_SCALE_MAX - FONT_SCALE_MIN));
+        let font_minus = Rect::new(px + 20.0, py + 100.0, 36.0, 32.0);
+        let font_plus = Rect::new(px + pw - 56.0, py + 100.0, 36.0, 32.0);
+        self.art.button(font_minus, "-", 26.0);
+        self.art.button(font_plus, "+", 26.0);
 
-        // Slider track.
-        let track = Rect::new(px + 70.0, py + 120.0, pw - 140.0, 8.0);
-        draw_rectangle(track.x, track.y, track.w, track.h, Color::from_rgba(60, 50, 35, 255));
-        let frac = ((scale - FONT_SCALE_MIN) / (FONT_SCALE_MAX - FONT_SCALE_MIN)).clamp(0.0, 1.0);
-        let knob_x = track.x + track.w * frac;
-        draw_rectangle(track.x, track.y, track.w * frac, track.h, gold());
-        draw_circle(knob_x, track.y + track.h / 2.0, 10.0, gold());
-
-        // Minus / Plus buttons.
-        let minus = Rect::new(px + 20.0, py + 108.0, 36.0, 32.0);
-        let plus = Rect::new(px + pw - 56.0, py + 108.0, 36.0, 32.0);
-        self.art.button(minus, "-", 26.0);
-        self.art.button(plus, "+", 26.0);
+        let volume = sound_volume();
+        let volume_label = if volume <= 0.001 {
+            "Sound: Muted".to_string()
+        } else {
+            format!("Sound: {:.0}%", volume * 100.0)
+        };
+        label_center(&volume_label, px + pw / 2.0, py + 176.0, 20.0, WHITE);
+        let sound_track = Rect::new(px + 70.0, py + 220.0, pw - 140.0, 8.0);
+        draw_slider(sound_track, (volume - SOUND_VOLUME_MIN) / (SOUND_VOLUME_MAX - SOUND_VOLUME_MIN));
+        let sound_minus = Rect::new(px + 20.0, py + 208.0, 36.0, 32.0);
+        let sound_plus = Rect::new(px + pw - 56.0, py + 208.0, 36.0, 32.0);
+        self.art.button(sound_minus, "-", 26.0);
+        self.art.button(sound_plus, "+", 26.0);
 
         let close = Rect::new(px + pw / 2.0 - 70.0, py + ph - 56.0, 140.0, 40.0);
         self.art.button(close, "Back", 24.0);
 
-        // Input: drag the slider, click +/-, or close.
         let (mx, my) = mouse_position();
-        if is_mouse_button_down(MouseButton::Left)
-            && mx >= track.x - 12.0
-            && mx <= track.x + track.w + 12.0
-            && (my - (track.y + track.h / 2.0)).abs() < 24.0
-        {
-            let f = ((mx - track.x) / track.w).clamp(0.0, 1.0);
+        if slider_drag(font_track, mx, my) {
+            let f = ((mx - font_track.x) / font_track.w).clamp(0.0, 1.0);
             set_font_scale(FONT_SCALE_MIN + f * (FONT_SCALE_MAX - FONT_SCALE_MIN));
+        } else if slider_drag(sound_track, mx, my) {
+            let f = ((mx - sound_track.x) / sound_track.w).clamp(0.0, 1.0);
+            set_sound_volume(SOUND_VOLUME_MIN + f * (SOUND_VOLUME_MAX - SOUND_VOLUME_MIN));
         }
-        if left_click(minus) {
+        if self.press(font_minus) {
             set_font_scale(scale - 0.05);
-        } else if left_click(plus) {
+        } else if self.press(font_plus) {
             set_font_scale(scale + 0.05);
-        } else if left_click(close) || is_key_pressed(KeyCode::Escape) {
+        } else if self.press(sound_minus) {
+            set_sound_volume(volume - 0.05);
+        } else if self.press(sound_plus) {
+            set_sound_volume(volume + 0.05);
+        } else if self.press(close) || is_key_pressed(KeyCode::Escape) {
             self.settings_open = false;
         }
     }
@@ -2294,16 +2361,16 @@ impl App {
             self.draw_settings_overlay();
             return;
         }
-        if left_click(resume) || is_key_pressed(KeyCode::Escape) {
+        if self.press(resume) || is_key_pressed(KeyCode::Escape) {
             self.mode = Mode::Play;
-        } else if left_click(save) {
+        } else if self.press(save) {
             self.save_game();
-        } else if left_click(settings) {
+        } else if self.press(settings) {
             self.settings_open = true;
-        } else if left_click(menu) {
+        } else if self.press(menu) {
             self.game.paper = None;
             self.mode = Mode::Menu;
-        } else if left_click(exit) {
+        } else if self.press(exit) {
             std::process::exit(0);
         }
     }
@@ -2367,12 +2434,9 @@ impl App {
     fn editor_screen(&mut self) {
         // --- Draw the map and territory overlay (no cities/units/HUD). ---
         clear_background(Color::from_rgba(10, 10, 30, 255));
-        stretch(
-            &self.map_tex,
-            Rect::new(self.cam_x, self.cam_y, MAP_W as f32 * self.zoom, MAP_H as f32 * self.zoom),
-        );
+        draw_map_layer(&self.map_tex, self.cam_x, self.cam_y, self.zoom);
         if let Some(overlay) = &self.editor_overlay {
-            stretch(overlay, Rect::new(self.cam_x, self.cam_y, MAP_W as f32 * self.zoom, MAP_H as f32 * self.zoom));
+            draw_map_layer(overlay, self.cam_x, self.cam_y, self.zoom);
         }
 
         let w = screen_width();
@@ -2420,18 +2484,23 @@ impl App {
                 if let Some(editor) = &mut self.editor {
                     editor.panel_hidden = !editor.panel_hidden;
                 }
+                self.game.cue(Cue::Click);
             } else if !hidden && panel.contains(vec2(mx, my)) {
                 // Click inside the expanded palette: a control button or a row.
                 if left_click(save) {
                     self.save_editor_map();
+                    self.game.cue(Cue::Click);
                 } else if left_click(load) {
                     self.load_editor_map();
+                    self.game.cue(Cue::Click);
                 } else if left_click(clear) {
                     if let Some(editor) = &mut self.editor {
                         editor.clear();
                     }
                     self.refresh_editor_overlay();
+                    self.game.cue(Cue::Click);
                 } else if left_click(back) {
+                    self.game.cue(Cue::Click);
                     self.mode = Mode::Menu;
                     return;
                 } else if my >= list_top && my <= list_bottom {
@@ -2440,6 +2509,7 @@ impl App {
                         if let Some(editor) = &mut self.editor {
                             editor.selected = idx;
                         }
+                        self.game.cue(Cue::Click);
                     }
                 }
             } else {
@@ -2581,8 +2651,8 @@ impl App {
         }
         let min_x = screen_width() - MAP_W as f32 * self.zoom;
         let min_y = screen_height() - MAP_H as f32 * self.zoom;
-        self.cam_x = self.cam_x.clamp(min_x.min(0.0), 0.0);
-        self.cam_y = self.cam_y.clamp(min_y.min(0.0), 0.0);
+        self.cam_x = self.cam_x.round().clamp(min_x.min(0.0), 0.0);
+        self.cam_y = self.cam_y.round().clamp(min_y.min(0.0), 0.0);
     }
 
     /// Saves the current editor map (region -> country) to the scenario-map
@@ -3163,6 +3233,91 @@ fn stretch(tex: &Texture2D, rect: Rect) {
         WHITE,
         DrawTextureParams { dest_size: Some(vec2(rect.w, rect.h)), ..Default::default() },
     );
+}
+
+/// Satellite photo with a mip chain.
+///
+/// The map is minified to fit the window and magnified when zoomed. Without
+/// mipmaps the GPU picks one texel per screen pixel from the full photo, and
+/// that choice flips as the camera moves, so coastlines and cities blink.
+/// `Texture2D::set_filter` turns mipmaps back off, so the sampler is set here.
+fn satellite_texture(pixels: &[u8], w: u32, h: u32) -> Texture2D {
+    use miniquad::{FilterMode, MipmapFilterMode, TextureAccess, TextureFormat, TextureKind, TextureParams, TextureSource, TextureWrap};
+    let params = TextureParams {
+        kind: TextureKind::Texture2D,
+        format: TextureFormat::RGBA8,
+        wrap: TextureWrap::Clamp,
+        min_filter: FilterMode::Linear,
+        mag_filter: FilterMode::Linear,
+        mipmap_filter: MipmapFilterMode::Linear,
+        width: w,
+        height: h,
+        allocate_mipmaps: true,
+        sample_count: 1,
+    };
+    unsafe {
+        let gl = macroquad::window::get_internal_gl();
+        let id = gl.quad_context.new_texture(TextureAccess::Static, TextureSource::Bytes(pixels), params);
+        gl.quad_context.texture_generate_mipmaps(id);
+        gl.quad_context.texture_set_filter(id, FilterMode::Linear, MipmapFilterMode::Linear);
+        Texture2D::from_miniquad_texture(id)
+    }
+}
+
+/// Draws the on-screen part of a native-map texture.
+///
+/// The old draw stretched the whole map into one quad several times larger
+/// than the window. Some Windows drivers interpolate that quad poorly and the
+/// photo flashes while panning or zooming, with the cleared background showing
+/// through a seam. This quad is only the visible window, in whole pixels.
+fn draw_map_layer(tex: &Texture2D, cam_x: f32, cam_y: f32, zoom: f32) {
+    let sw = screen_width();
+    let sh = screen_height();
+    let map_w = MAP_W as f32;
+    let map_h = MAP_H as f32;
+    let z = zoom.max(0.0001);
+    let x0 = cam_x.max(0.0).floor();
+    let y0 = cam_y.max(0.0).floor();
+    let x1 = (cam_x + map_w * z).min(sw).ceil();
+    let y1 = (cam_y + map_h * z).min(sh).ceil();
+    if x1 <= x0 || y1 <= y0 {
+        return;
+    }
+    let u0 = ((x0 - cam_x) / z).clamp(0.0, map_w);
+    let v0 = ((y0 - cam_y) / z).clamp(0.0, map_h);
+    let u1 = ((x1 - cam_x) / z).clamp(0.0, map_w);
+    let v1 = ((y1 - cam_y) / z).clamp(0.0, map_h);
+    if u1 <= u0 || v1 <= v0 {
+        return;
+    }
+    let tw = tex.width();
+    let th = tex.height();
+    let source = Rect::new(u0 / map_w * tw, v0 / map_h * th, (u1 - u0) / map_w * tw, (v1 - v0) / map_h * th);
+    draw_texture_ex(
+        tex,
+        x0,
+        y0,
+        WHITE,
+        DrawTextureParams {
+            dest_size: Some(vec2(x1 - x0, y1 - y0)),
+            source: Some(source),
+            ..Default::default()
+        },
+    );
+}
+
+fn draw_slider(track: Rect, frac: f32) {
+    let frac = frac.clamp(0.0, 1.0);
+    draw_rectangle(track.x, track.y, track.w, track.h, Color::from_rgba(60, 50, 35, 255));
+    draw_rectangle(track.x, track.y, track.w * frac, track.h, gold());
+    draw_circle(track.x + track.w * frac, track.y + track.h / 2.0, 10.0, gold());
+}
+
+fn slider_drag(track: Rect, mx: f32, my: f32) -> bool {
+    is_mouse_button_down(MouseButton::Left)
+        && mx >= track.x - 12.0
+        && mx <= track.x + track.w + 12.0
+        && (my - (track.y + track.h / 2.0)).abs() < 22.0
 }
 
 fn blit_tint(tex: &Texture2D, x: f32, y: f32, w: f32, h: f32, color: Color) {

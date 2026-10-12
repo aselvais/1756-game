@@ -528,3 +528,26 @@ pub fn set_font_scale(scale: f32) {
 pub fn scaled_font(size: f32) -> f32 {
     size * font_scale()
 }
+
+// ---------------------------------------------------------------------------
+// Sound volume
+//
+// Session-wide, like the font scale. 0 is mute. The simulation never reads
+// this; the renderer applies it when it plays queued cues.
+// ---------------------------------------------------------------------------
+
+static SOUND_VOLUME_BITS: AtomicU32 = AtomicU32::new(0.7f32.to_bits());
+
+pub const SOUND_VOLUME_MIN: f32 = 0.0;
+pub const SOUND_VOLUME_MAX: f32 = 1.0;
+
+/// Current effect volume, from mute to full.
+pub fn sound_volume() -> f32 {
+    f32::from_bits(SOUND_VOLUME_BITS.load(Ordering::Relaxed))
+}
+
+/// Sets the effect volume, clamped to mute..full.
+pub fn set_sound_volume(volume: f32) {
+    let clamped = volume.clamp(SOUND_VOLUME_MIN, SOUND_VOLUME_MAX);
+    SOUND_VOLUME_BITS.store(clamped.to_bits(), Ordering::Relaxed);
+}

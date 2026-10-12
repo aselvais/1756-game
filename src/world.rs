@@ -10,6 +10,8 @@
 //! pixels drawn on top of the ownership tint.
 
 use crate::config::{MAP_H, MAP_W};
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::path::Path;
 
 /// Width of the territory detection grid. Thinner grids merge neighboring tiles.
@@ -37,6 +39,10 @@ pub struct Maps {
     region_neighbors: Vec<Vec<i32>>,
     /// Per native-map pixel: 0 ocean, 1 black border, 2 land interior.
     overlay_kind: Vec<u8>,
+    /// Routes already searched, keyed by (start region, goal region). Many
+    /// regiments share the same plot-to-plot march, and a failed overseas
+    /// search used to repeat on every tick.
+    path_cache: RefCell<HashMap<(i32, i32), Vec<i32>>>,
 }
 
 impl Maps {
@@ -74,6 +80,7 @@ impl Maps {
             region_edge: regions.edges,
             region_neighbors: regions.neighbors,
             overlay_kind: regions.overlay_kind,
+            path_cache: RefCell::new(HashMap::new()),
         })
     }
 
@@ -165,6 +172,21 @@ impl Maps {
         if start < 0 || goal < 0 || start == goal {
             return Vec::new();
         }
+        let key = (start, goal);
+        if let Some(path) = self.path_cache.borrow().get(&key) {
+            return path.clone();
+        }
+        let path = self.compute_region_path(start, goal);
+        // Cap the table so a long game cannot retain every pair it ever tried.
+        let mut cache = self.path_cache.borrow_mut();
+        if cache.len() > 8192 {
+            cache.clear();
+        }
+        cache.insert(key, path.clone());
+        path
+    }
+
+    fn compute_region_path(&self, start: i32, goal: i32) -> Vec<i32> {
         let n = self.region_neighbors.len();
         if start as usize >= n || goal as usize >= n {
             return Vec::new();

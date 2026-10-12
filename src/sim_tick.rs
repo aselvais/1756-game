@@ -210,12 +210,14 @@ impl Game {
         let key = self.remember(a, b);
         if self.alliances.remove(&key).is_some() {
             self.news(format!("Alliance between {a} & {b} broken!"));
+            self.cue(Cue::Break);
         }
         self.treaties.remove(&key);
         self.wars.insert(key);
         if !reason.is_empty() {
             self.news(reason);
         }
+        self.cue(Cue::War);
     }
 
     fn end_war(&mut self, a: &str, b: &str) {
@@ -250,6 +252,7 @@ impl Game {
         if !reason.is_empty() {
             self.news(reason);
         }
+        self.cue(Cue::Peace);
     }
 
     fn resolve_occupied(&mut self, a: &str, b: &str) {
@@ -290,6 +293,7 @@ impl Game {
                 }
             }
             self.news(format!("{victor} annexes occupied territory from {loser}!"));
+            self.cue(Cue::Annex);
         } else {
             let keep = if roll == 3 { occupied.len().min(2) } else { 0 };
             for (i, id) in occupied.iter().enumerate() {
@@ -349,8 +353,10 @@ impl Game {
                 }
                 self.eliminated.insert("Confederate States".into());
                 self.news("The Union is restored!");
+                self.cue(Cue::Fanfare);
             } else {
                 self.news("The Confederate States maintain their independence!");
+                self.cue(Cue::Fanfare);
             }
         }
     }
@@ -398,6 +404,7 @@ impl Game {
         if d == 21 && m == 9 && y == 1792 && !self.eliminated.contains("France") {
             self.news("France abolishes the monarchy — the French Republic is proclaimed!");
             self.paper("French Revolution!", "The French monarchy is abolished. The First French Republic is proclaimed.");
+            self.cue(Cue::Fanfare);
         }
         if d == 30 && m == 4 && y == 1803 {
             for c in &mut self.cities {
@@ -414,6 +421,7 @@ impl Game {
             self.eliminated.insert("Louisiana".into());
             self.news("Louisiana Purchase! France sells New Orleans and Saint-Louis to the United States.");
             self.paper("Louisiana Purchase!", "France sells the Louisiana Territory to the United States.");
+            self.cue(Cue::Fanfare);
         }
         if d == 1 && m == 1 && y == 1804 {
             self.haitian_independence();
@@ -449,6 +457,7 @@ impl Game {
             }
             self.news("Alaska Purchase! The United States buys Alaska from Russia.");
             self.paper("Alaska Purchase!", "The United States purchases Alaska. Sitka and Kodiak are now American.");
+            self.cue(Cue::Fanfare);
         }
         if d == 1 && m == 7 && y == 1867 {
             self.canadian_confederation();
@@ -637,6 +646,7 @@ impl Game {
             if prev != Some(winner) {
                 let party = parties_of(&nation)[winner];
                 self.news(format!("{nation} election: the {party} party takes power!"));
+                self.cue(Cue::Election);
             }
         }
     }
@@ -809,9 +819,11 @@ impl Game {
             let key = self.remember("United States", "France");
             self.alliances.insert(key, rand::thread_rng().gen_range(DAY_TICKS * 200..DAY_TICKS * 400));
             self.news("France allies with the United States!");
+            self.cue(Cue::Alliance);
         }
         self.news("The American Revolution has begun!");
         self.paper("American Revolution!", "The thirteen colonies declare independence from Great Britain.");
+        self.cue(Cue::Fanfare);
         if let Some(idx) = self.cities.iter().position(|c| c.name == "Boston" && c.owner == "United States") {
             self.spawn_unit(idx, self.cities[idx].id, "Line", true, false, "Patrol");
             self.spawn_unit(idx, self.cities[idx].id, "Square", true, false, "Patrol");
@@ -844,6 +856,7 @@ impl Game {
         self.eliminated.insert("Saint-Domingue".into());
         self.news("Haitian Revolution! Haiti declares independence from France!");
         self.paper("Haitian Independence!", "Haiti becomes the first free Black republic.");
+        self.cue(Cue::Fanfare);
     }
 
     fn mexican_independence(&mut self) {
@@ -872,6 +885,7 @@ impl Game {
         }
         self.news("Mexican War of Independence!");
         self.paper("Mexican Independence!", "Mexico declares independence from Spain.");
+        self.cue(Cue::Fanfare);
     }
 
     fn texas_independence(&mut self) {
@@ -897,6 +911,7 @@ impl Game {
         }
         self.news("Texas Revolution! The Republic of Texas declares independence!");
         self.paper("Texas Revolution!", "Texas declares independence.");
+        self.cue(Cue::Fanfare);
     }
 
     fn confederate_states(&mut self) {
@@ -922,6 +937,7 @@ impl Game {
         }
         self.news("The Confederate States of America is formed!");
         self.paper("Confederate Secession!", "The American Civil War has begun.");
+        self.cue(Cue::Fanfare);
     }
 
     fn canadian_confederation(&mut self) {
@@ -967,6 +983,7 @@ impl Game {
         }
         self.news("Canadian Confederation! The Dominion of Canada is formed.");
         self.paper("Canadian Confederation!", "British North America unites as the Dominion of Canada. Ottawa is the capital, and Rupert's Land passes to the new dominion.");
+        self.cue(Cue::Fanfare);
     }
 
     /// Reserved helper: wholesale rename/merge one faction into another. No
@@ -1239,6 +1256,7 @@ impl Game {
             behavior: behavior.into(),
             path: Vec::new(),
             path_goal: -1,
+            path_from: -1,
             guard_region: -1,
             guard_anchor: None,
             siege_timer: 0,
@@ -1586,20 +1604,26 @@ impl Game {
             self.cities[i].tier = nt;
             let max = max_troops(&self.cities[i]);
             self.cities[i].troops = (self.cities[i].troops + 25).min(max);
+            self.cue(Cue::Built);
         }
     }
 
     fn finish_construction(&mut self) {
+        let mut finished = false;
         for c in &mut self.cities {
             if let Some((name, ticks)) = c.construction.clone() {
                 let left = ticks - self.speed;
                 if left <= 0 {
                     push_b(&mut c.buildings, &name);
                     c.construction = None;
+                    finished = true;
                 } else {
                     c.construction = Some((name, left));
                 }
             }
+        }
+        if finished {
+            self.cue(Cue::Built);
         }
     }
 
@@ -1823,6 +1847,7 @@ impl Game {
             let key = self.remember(&a, &b);
             self.alliances.insert(key, rand::thread_rng().gen_range(DAY_TICKS * 50..DAY_TICKS * 1825));
             self.news(format!("{a} & {b} form an alliance!"));
+            self.cue(Cue::Alliance);
         }
     }
 
@@ -1888,9 +1913,11 @@ impl Game {
                     c.sovereign = demander.clone();
                 }
                 self.news(format!("{holder} returns {name} to {demander}."));
+                self.cue(Cue::Occupy);
             } else {
                 *self.refused.entry(key).or_insert(0) += 1;
                 self.news(format!("{holder} refuses to return {name} to {demander}!"));
+                self.cue(Cue::Break);
             }
         }
     }
@@ -1972,6 +1999,7 @@ impl Game {
                     let name = c.name.clone();
                     self.flooded.insert(id, DAY_TICKS * 30);
                     self.news(format!("Flood hit {name}! Production halted for a month."));
+                    self.cue(Cue::Flood);
                 }
             }
         }
@@ -2000,6 +2028,7 @@ impl Game {
             }
         }
         self.news(format!("{kind} strikes {name}! -{loss} troops, {killed} units lost"));
+        self.cue(Cue::Disaster);
     }
 
     fn update_floods(&mut self) {
@@ -2041,6 +2070,7 @@ impl Game {
         self.spawn_unit(idx, id, "Line", true, false, "Attack");
         self.declare_war("Pirates", &old, "");
         self.news(format!("Pirates seize {name} from {old}!"));
+        self.cue(Cue::Pirates);
         self.pirates_spawned = true;
         self.pirate_cd = DAY_TICKS * rand::thread_rng().gen_range(100..600);
     }
@@ -2060,6 +2090,7 @@ impl Game {
         for (key, a, b) in expired {
             self.treaty_cd.insert(key, TREATY_COOLDOWN);
             self.news(format!("Treaty expired: {a} vs {b} — now neutral."));
+            self.cue(Cue::Break);
         }
         self.treaty_cd.retain(|_, t| {
             *t -= speed;
@@ -2077,6 +2108,7 @@ impl Game {
         });
         for (a, b) in ended {
             self.news(format!("Alliance between {a} & {b} has ended."));
+            self.cue(Cue::Break);
         }
     }
 
@@ -2098,6 +2130,7 @@ impl Game {
                 self.surrendered.insert(f.clone());
                 if !victors.is_empty() {
                     self.news(format!("{f} has lost all cities — forced to surrender!"));
+                    self.cue(Cue::Surrender);
                     for v in &victors {
                         let msg = format!("{v} dictates peace terms to defeated {f}.");
                         self.make_treaty(v, &f, &msg);
@@ -2118,6 +2151,7 @@ impl Game {
                 self.eliminated.insert(f.clone());
                 self.news(format!("{f} has been eliminated from the game!"));
                 self.paper(&format!("{f} Eliminated!"), &format!("The nation of {f} has been destroyed."));
+                self.cue(Cue::Eliminated);
             }
         }
     }
@@ -2216,7 +2250,13 @@ impl Game {
             self.units[i].idle = !self.units[i].patrolling;
             return;
         }
+        // phase_timer stays 0 until the first siege step, and later phases
+        // leave it 0 only after siege_phase has already advanced.
+        let announce = self.units[i].siege_phase <= 1 && self.units[i].phase_timer == 0;
         self.siege(i, target);
+        if announce {
+            self.cue(Cue::Siege);
+        }
     }
 
     /// Moves unit `i` one step toward world point `(tx, ty)` by following a
@@ -2237,12 +2277,17 @@ impl Game {
         }
         let here = maps.region_at(x, y);
         let goal = maps.region_at(tx, ty);
-        // (Re)compute the plot path when the destination region changes or the
-        // cached path is exhausted. If the goal is unreachable overland (e.g.
-        // across water) the path stays empty and we fall back to straight-line.
-        if goal >= 0 && (self.units[i].path_goal != goal || self.units[i].path.is_empty()) {
+        // Rebuild the plot path when the destination region changes, or when
+        // the unit has walked into a new region with no waypoints left. An
+        // empty path for the region we already searched (overseas target, or
+        // already standing in the goal) is kept: searching again every tick
+        // walked the whole territory graph for every such regiment.
+        let goal_changed = self.units[i].path_goal != goal;
+        let entered = self.units[i].path.is_empty() && here != goal && self.units[i].path_from != here;
+        if goal >= 0 && (goal_changed || entered) {
             self.units[i].path = maps.region_path(here, goal);
             self.units[i].path_goal = goal;
+            self.units[i].path_from = here;
         }
         // Drop any leading waypoints we've already reached (including the one
         // we're currently standing in) so we always aim at the NEXT plot.
@@ -2446,6 +2491,7 @@ impl Game {
         if self.cities[ci].is_fort && !self.cities[ci].is_camp {
             self.cities.remove(ci);
             self.news(format!("{name} destroyed by {faction}!"));
+            self.cue(Cue::Occupy);
             self.units[i].idle = true;
             self.claims_dirty = true;
             return;
@@ -2463,6 +2509,7 @@ impl Game {
             self.cities[ci].name = if faction == "Great Britain" { "Moose Factory".into() } else { "Moosonee".into() };
         }
         self.news(format!("{faction} occupies {name}!"));
+        self.cue(Cue::Occupy);
         let mats = ["Gold", "Food", "Lumber", "Hide", "Iron", "Coal"];
         for mat in mats.iter().take(3) {
             self.transfer(&old, &faction, mat, rand::thread_rng().gen_range(5..25));
@@ -2487,6 +2534,7 @@ impl Game {
                     }
                 }
                 self.news(format!("{old} surrenders to {faction}!"));
+                self.cue(Cue::Surrender);
                 let msg = format!("{faction} dictates peace terms to {old}.");
                 self.make_treaty(&faction, &old, &msg);
             }
@@ -2520,6 +2568,7 @@ impl Game {
                     let enemy = self.units[j].faction.clone();
                     self.fatigue_add(&faction, &enemy);
                     self.units[j].alive = false;
+                    self.cue(Cue::Shot);
                     break;
                 }
                 if self.at_peace(&faction, &self.units[j].faction) {
@@ -2530,6 +2579,7 @@ impl Game {
                 self.units[j].opponent = Some(uid);
                 self.units[i].battle_phase = 1;
                 self.units[j].battle_phase = 1;
+                self.cue(Cue::Battle);
                 break;
             }
         }
@@ -2773,6 +2823,7 @@ impl Game {
             self.settlers[i].alive = false;
             self.claims_dirty = true;
             self.news(format!("{faction} settles territory #{region}!"));
+            self.cue(Cue::Founded);
         }
     }
 }

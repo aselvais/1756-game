@@ -9,7 +9,7 @@ description = "Rust port of Colonial Simulator, the colonial grand strategy game
 bundle = ["dep:zip"]
 
 [dependencies]
-macroquad = "0.4"
+macroquad = { version = "0.4", features = ["audio"] }
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp"] }
 rand = "0.8"
 serde = { version = "1", features = ["derive"] }

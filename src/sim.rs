@@ -2,6 +2,7 @@
 //! disasters, and the historical scenario events.
 
 use crate::config::*;
+use crate::cues::Cue;
 use crate::world::Maps;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
@@ -212,6 +213,10 @@ pub struct Unit {
     /// Destination region the current `path` was computed for; -1 when none.
     #[serde(default = "neg_one")]
     pub path_goal: i32,
+    /// Region the unit was standing in when `path` was last built. Stops a
+    /// failed or finished route from running a full territory search every tick.
+    #[serde(default = "neg_one")]
+    pub path_from: i32,
     /// For "Guard": the region the unit anchors on, and its world-space center
     /// and radius. The unit holds within `guard_radius` of the anchor point.
     #[serde(default = "neg_one")]
@@ -338,6 +343,11 @@ pub struct Game {
     canada_fired: bool,
     pirates_spawned: bool,
     pirate_cd: i32,
+    /// Sounds raised since the renderer last drained them. Not saved.
+    /// Duplicates in one step collapse, so a tick that starts five battles
+    /// plays the battle sound once.
+    #[serde(skip)]
+    cues: Vec<Cue>,
 }
 
 impl Game {
@@ -401,6 +411,7 @@ impl Game {
             canada_fired: false,
             pirates_spawned: false,
             pirate_cd: 0,
+            cues: Vec::new(),
         };
         g.build_cities();
         g.boot_factions();
@@ -512,6 +523,21 @@ impl Game {
         self.election_timer = DAY_TICKS * 365 * 4; // elections every 4 years
         self.claims_dirty = true;
         self.news(format!("Scenario {} begins.", self.year));
+        // Setup founds cities and holds the opening elections. Those are not
+        // events the player just watched, so they stay silent.
+        self.cues.clear();
+    }
+
+    /// Queue a sound. A second copy of the same cue in this step is ignored.
+    pub fn cue(&mut self, cue: Cue) {
+        if !self.cues.contains(&cue) {
+            self.cues.push(cue);
+        }
+    }
+
+    /// Take the sounds queued since the last call, one of each kind.
+    pub fn take_cues(&mut self) -> Vec<Cue> {
+        crate::cues::coalesce(std::mem::take(&mut self.cues))
     }
 
     /// Sets each starting settlement's tier to roughly match its real
@@ -669,6 +695,7 @@ impl Game {
         // Becoming a puppet changes the territory's map shade.
         self.claims_dirty = true;
         self.news(format!("{puppet} becomes a puppet of {overlord}!"));
+        self.cue(Cue::Puppet);
     }
 
     /// Frees a puppet from its overlord.
@@ -677,6 +704,7 @@ impl Game {
             // Reverting to a sovereign color is a visible map change.
             self.claims_dirty = true;
             self.news(format!("{puppet} breaks free from {overlord}!"));
+            self.cue(Cue::Freedom);
         }
     }
 
@@ -1324,6 +1352,7 @@ impl Game {
         self.founded = later;
         for name in names {
             self.news(format!("{name} is founded!"));
+            self.cue(Cue::Founded);
         }
     }
 
@@ -1690,6 +1719,29 @@ mod tests {
     use super::*;
 
     #[test]
+    fn war_and_repeated_cues_collapse_to_one_sound() {
+        let mut game = Game::new();
+        game.declare_war("France", "Spain", "test war");
+        game.cue(Cue::War);
+        game.cue(Cue::Peace);
+        game.cue(Cue::Peace);
+        assert_eq!(game.take_cues(), vec![Cue::War, Cue::Peace]);
+        assert!(game.take_cues().is_empty());
+    }
+
+    #[test]
+    fn save_does_not_keep_pending_sounds() {
+        let mut game = Game::new();
+        game.cue(Cue::Battle);
+        let path = std::env::temp_dir().join(format!("colonial-sim-cues-{}.json", std::process::id()));
+        game.save(&path).expect("save");
+        let mut loaded = Game::load(&path).expect("load");
+        let _ = std::fs::remove_file(&path);
+        assert!(loaded.take_cues().is_empty());
+        assert_eq!(loaded.year, game.year);
+    }
+
+    #[test]
     fn new_game_loads_the_1754_world() {
         let game = Game::new();
         assert!(game.cities.len() > 30);
@@ -1750,6 +1802,7 @@ mod tests {
             let mut game = Game::new();
             game.start_scenario(year, &maps);
             assert_eq!(game.year, year);
+            assert!(game.take_cues().is_empty(), "scenario setup should not leave sounds queued");
             if year == 1754 {
                 assert!(game.cities.iter().any(|city| city.name == "Quebec" && city.region >= 0));
             }
